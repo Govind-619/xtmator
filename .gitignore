@@ -1,0 +1,22 @@
+# Runtime database — never commit live data
+*.db
+*.db-shm
+*.db-wal
+
+# Compiled binaries
+xtmator_bin
+xtmator
+/cmd/xtmator/xtmator
+
+# DSR import binary
+import-dsr
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Go build cache
+/vendor/
