@@ -170,7 +170,7 @@ const spaHTML = `<!DOCTYPE html>
             {/* Logo */}
             <div style={{ textAlign:'center', marginBottom:32 }}>
               <h1 style={{ fontSize:32, fontWeight:800, background:'linear-gradient(135deg,#3b82f6,#60a5fa)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
-                Xtmator
+                XTMATOR
               </h1>
               <p style={{ color:'var(--text-muted)', fontSize:14, marginTop:6 }}>
                 Construction BOQ Estimation System
