@@ -1,0 +1,671 @@
+package handler
+
+import (
+	"net/http"
+)
+
+// WebHandler serves the embedded React SPA shell for all non-API routes.
+type WebHandler struct{}
+
+func NewWebHandler() *WebHandler { return &WebHandler{} }
+
+func (h *WebHandler) Home(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(spaHTML))
+}
+
+const spaHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Xtmator — Construction BOQ System</title>
+  <meta name="description" content="Professional Construction Estimation and Quantity Surveying System based on DSR rates"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--border:#30363d;
+      --accent:#3b82f6;--accent-hover:#2563eb;--accent-soft:#1e3a5f;
+      --text:#e6edf3;--text-muted:#8b949e;--text-dim:#6e7681;
+      --success:#22c55e;--danger:#ef4444;--warning:#f59e0b;
+      --radius:10px;--shadow:0 8px 32px rgba(0,0,0,.4);
+    }
+    body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5}
+    #root{min-height:100vh}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:var(--radius);font-size:14px;font-weight:500;cursor:pointer;transition:all .15s;text-decoration:none}
+    .btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent-hover)}
+    .btn-outline{background:transparent;color:var(--text);border:1px solid var(--border)}.btn-outline:hover{background:var(--surface2)}
+    .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger)}.btn-danger:hover{background:rgba(239,68,68,.1)}
+    .btn-sm{padding:5px 12px;font-size:12px}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px}
+    .input{width:100%;padding:9px 13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;transition:border .15s;font-family:inherit}
+    .input:focus{outline:none;border-color:var(--accent)}
+    .select{width:100%;padding:9px 13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;cursor:pointer;font-family:inherit}
+    .select:focus{outline:none;border-color:var(--accent)}
+    .label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+    .form-group{margin-bottom:16px}
+    .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+    .badge-blue{background:var(--accent-soft);color:var(--accent)}
+    .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:var(--radius);font-size:14px;font-weight:500;z-index:9999;animation:slideUp .25s ease}
+    .toast-success{background:#166534;color:#bbf7d0;border:1px solid #22c55e33}
+    .toast-error{background:#7f1d1d;color:#fecaca;border:1px solid #ef444433}
+    @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+    .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:13px}
+    th{background:var(--surface2);color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:rgba(255,255,255,.02)}
+    .text-right{text-align:right}.text-center{text-align:center}
+    .amount-cell{font-family:'Inter',monospace;font-weight:600}
+    .grand-total-row{background:var(--surface2) !important}
+    .grand-total-row td{font-weight:700;color:var(--accent);font-size:14px;border-top:2px solid var(--border)}
+    .sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:100vh;position:fixed;left:0;top:0}
+    .main-content{margin-left:240px;padding:32px;min-height:100vh}
+    .sidebar-logo{padding:24px;border-bottom:1px solid var(--border)}
+    .sidebar-logo h1{font-size:20px;font-weight:800;background:linear-gradient(135deg,#3b82f6,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .sidebar-logo p{font-size:11px;color:var(--text-muted);margin-top:2px}
+    .sidebar-nav{flex:1;padding:16px 12px}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:14px;font-weight:500;transition:all .15s;text-decoration:none;border:none;background:none;width:100%;text-align:left}
+    .nav-item:hover{background:var(--surface2);color:var(--text)}
+    .nav-item.active{background:var(--accent-soft);color:var(--accent)}
+    .sidebar-user{padding:16px;border-top:1px solid var(--border)}
+    .user-info{display:flex;align-items:center;gap:10px}
+    .avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#60a5fa);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:#fff;flex-shrink:0}
+    .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+    .page-header h2{font-size:22px;font-weight:700}
+    .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+    .project-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;cursor:pointer;transition:all .15s;text-decoration:none}
+    .project-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
+    .project-card h3{font-size:16px;font-weight:600;margin-bottom:6px}
+    .project-card p{font-size:12px;color:var(--text-muted)}
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;width:100%;max-width:520px;box-shadow:var(--shadow)}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+    .modal-header h3{font-size:17px;font-weight:700}
+    .close-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;line-height:1;padding:2px 6px;border-radius:4px}
+    .close-btn:hover{color:var(--text);background:var(--surface2)}
+    .boq-form-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    .empty-state{text-align:center;padding:60px 20px;color:var(--text-muted)}
+    .empty-state .icon{font-size:48px;margin-bottom:12px}
+    .empty-state h3{font-size:18px;color:var(--text);margin-bottom:8px}
+    .divider{height:1px;background:var(--border);margin:16px 0}
+    .tag{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--text-muted)}
+    input[type=number]::-webkit-inner-spin-button{opacity:.5}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ─── API helpers ────────────────────────────────────────────────────────────
+    const getToken = () => localStorage.getItem('xtm_token');
+    const getUser  = () => { try { return JSON.parse(localStorage.getItem('xtm_user')||'null'); } catch { return null; } };
+
+    async function api(method, path, body) {
+      const headers = { 'Content-Type': 'application/json' };
+      const token = getToken();
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'An error occurred');
+      return json;
+    }
+
+    // ─── Toast ───────────────────────────────────────────────────────────────────
+    function Toast({ msg, type, onDone }) {
+      useEffect(() => { const t = setTimeout(onDone, 3000); return () => clearTimeout(t); }, []);
+      return <div className={'toast toast-' + type}>{msg}</div>;
+    }
+
+    function useToast() {
+      const [toast, setToast] = useState(null);
+      const show = (msg, type='success') => setToast({ msg, type, key: Date.now() });
+      const el = toast ? <Toast key={toast.key} msg={toast.msg} type={toast.type} onDone={() => setToast(null)}/> : null;
+      return [el, show];
+    }
+
+    // ─── Auth Pages ───────────────────────────────────────────────────────────────
+    function AuthPage({ onLogin }) {
+      const [mode, setMode] = useState('login'); // 'login' | 'register'
+      const [form, setForm] = useState({ name:'', email:'', password:'' });
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+      const submit = async (e) => {
+        e.preventDefault();
+        setLoading(true); setError('');
+        try {
+          if (mode === 'register') {
+            await api('POST', '/api/auth/register', form);
+            setMode('login');
+            setForm(f => ({ ...f, name: '' }));
+          } else {
+            const res = await api('POST', '/api/auth/login', { email: form.email, password: form.password });
+            localStorage.setItem('xtm_token', res.token);
+            localStorage.setItem('xtm_user', JSON.stringify(res.user));
+            onLogin(res.user);
+          }
+        } catch(err) {
+          setError(err.message);
+        } finally { setLoading(false); }
+      };
+
+      return (
+        <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+          <div style={{ width:'100%', maxWidth:400 }}>
+            {/* Logo */}
+            <div style={{ textAlign:'center', marginBottom:32 }}>
+              <h1 style={{ fontSize:32, fontWeight:800, background:'linear-gradient(135deg,#3b82f6,#60a5fa)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
+                Xtmator
+              </h1>
+              <p style={{ color:'var(--text-muted)', fontSize:14, marginTop:6 }}>
+                Construction BOQ Estimation System
+              </p>
+            </div>
+            <div className="card">
+              <div style={{ display:'flex', borderRadius:8, background:'var(--surface2)', padding:3, marginBottom:24 }}>
+                {['login','register'].map(m => (
+                  <button key={m} onClick={() => { setMode(m); setError(''); }}
+                    style={{ flex:1, padding:'8px 0', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600, fontSize:14, fontFamily:'inherit',
+                      background: mode === m ? 'var(--accent)' : 'transparent',
+                      color: mode === m ? '#fff' : 'var(--text-muted)', transition:'all .15s' }}>
+                    {m === 'login' ? 'Sign In' : 'Create Account'}
+                  </button>
+                ))}
+              </div>
+              <form onSubmit={submit}>
+                {mode === 'register' && (
+                  <div className="form-group">
+                    <label className="label">Full Name</label>
+                    <input id="inp-name" className="input" placeholder="John Builder" value={form.name} onChange={set('name')} required/>
+                  </div>
+                )}
+                <div className="form-group">
+                  <label className="label">Email Address</label>
+                  <input id="inp-email" className="input" type="email" placeholder="you@example.com" value={form.email} onChange={set('email')} required/>
+                </div>
+                <div className="form-group">
+                  <label className="label">Password</label>
+                  <input id="inp-password" className="input" type="password" placeholder="••••••••" value={form.password} onChange={set('password')} required/>
+                </div>
+                {error && <p style={{ color:'var(--danger)', fontSize:13, marginBottom:14 }}>⚠ {error}</p>}
+                <button id="btn-submit" className="btn btn-primary" style={{ width:'100%', justifyContent:'center', padding:'11px 0', fontSize:15 }} disabled={loading}>
+                  {loading ? <span className="spinner"/> : (mode === 'login' ? 'Sign In' : 'Create Account')}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Sidebar ─────────────────────────────────────────────────────────────────
+    function Sidebar({ user, page, onNav, onLogout }) {
+      const initials = (user?.name||'U').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+      return (
+        <div className="sidebar">
+          <div className="sidebar-logo">
+            <h1>Xtmator</h1>
+            <p>BOQ Estimation System</p>
+          </div>
+          <div className="sidebar-nav">
+            <button id="nav-dashboard" className={'nav-item' + (page==='dashboard'?' active':'')} onClick={() => onNav('dashboard')}>
+              🗂 Dashboard
+            </button>
+          </div>
+          <div className="sidebar-user">
+            <div className="user-info">
+              <div className="avatar">{initials}</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:600, fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.name}</div>
+                <div style={{ fontSize:11, color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
+              </div>
+            </div>
+            <button id="btn-logout" className="btn btn-outline btn-sm" style={{ width:'100%', justifyContent:'center', marginTop:12 }} onClick={onLogout}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Dashboard page ───────────────────────────────────────────────────────────
+    function Dashboard({ onOpenProject, showToast }) {
+      const [projects, setProjects] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [showModal, setShowModal] = useState(false);
+      const [form, setForm] = useState({ name:'', client_name:'', location:'' });
+      const [saving, setSaving] = useState(false);
+
+      const load = useCallback(async () => {
+        setLoading(true);
+        try { setProjects(await api('GET', '/api/projects')); }
+        catch(e) { showToast(e.message, 'error'); }
+        finally { setLoading(false); }
+      }, []);
+
+      useEffect(() => { load(); }, [load]);
+
+      const createProject = async (e) => {
+        e.preventDefault(); setSaving(true);
+        try {
+          const p = await api('POST', '/api/projects', form);
+          setShowModal(false);
+          setForm({ name:'', client_name:'', location:'' });
+          showToast('Project created!');
+          onOpenProject(p);
+        } catch(err) { showToast(err.message, 'error'); }
+        finally { setSaving(false); }
+      };
+
+      const deleteProject = async (e, id) => {
+        e.stopPropagation();
+        if (!confirm('Delete this project and all its BOQ items?')) return;
+        try { await api('DELETE', '/api/projects/' + id); load(); showToast('Project deleted'); }
+        catch(err) { showToast(err.message, 'error'); }
+      };
+
+      const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+      return (
+        <div>
+          <div className="page-header">
+            <div>
+              <h2>My Projects</h2>
+              <p style={{ color:'var(--text-muted)', fontSize:14, marginTop:2 }}>Select a project to open its BOQ sheet</p>
+            </div>
+            <button id="btn-new-project" className="btn btn-primary" onClick={() => setShowModal(true)}>+ New Project</button>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign:'center', padding:60 }}><span className="spinner"/></div>
+          ) : projects.length === 0 ? (
+            <div className="empty-state">
+              <div className="icon">🏗</div>
+              <h3>No projects yet</h3>
+              <p>Create your first project to start building BOQ sheets</p>
+              <button className="btn btn-primary" style={{ marginTop:16 }} onClick={() => setShowModal(true)}>+ Create Project</button>
+            </div>
+          ) : (
+            <div className="project-grid">
+              {projects.map(p => (
+                <div key={p.ID} className="project-card" onClick={() => onOpenProject(p)}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'start' }}>
+                    <h3>{p.Name}</h3>
+                    <button className="btn btn-danger btn-sm" onClick={e => deleteProject(e, p.ID)}>🗑</button>
+                  </div>
+                  {p.ClientName && <p style={{ marginTop:4 }}>👤 {p.ClientName}</p>}
+                  {p.Location && <p style={{ marginTop:2 }}>📍 {p.Location}</p>}
+                  <p style={{ marginTop:8, fontSize:11 }}>
+                    {new Date(p.CreatedAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {showModal && (
+            <div className="modal-overlay" onClick={e => e.target===e.currentTarget && setShowModal(false)}>
+              <div className="modal">
+                <div className="modal-header">
+                  <h3>New Project</h3>
+                  <button className="close-btn" onClick={() => setShowModal(false)}>×</button>
+                </div>
+                <form onSubmit={createProject}>
+                  <div className="form-group">
+                    <label className="label">Project Name *</label>
+                    <input id="inp-project-name" className="input" placeholder="e.g. Water Tank – Block A" value={form.name} onChange={set('name')} required/>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Client Name</label>
+                    <input id="inp-client-name" className="input" placeholder="e.g. Kerala Water Authority" value={form.client_name} onChange={set('client_name')}/>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Location / Site</label>
+                    <input id="inp-location" className="input" placeholder="e.g. Thrissur, Kerala" value={form.location} onChange={set('location')}/>
+                  </div>
+                  <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:8 }}>
+                    <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Cancel</button>
+                    <button id="btn-create-project" type="submit" className="btn btn-primary" disabled={saving}>
+                      {saving ? <span className="spinner"/> : 'Create Project'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── BOQ Entry Form Modal ─────────────────────────────────────────────────────
+    function BOQEntryModal({ projectID, onSaved, onClose, showToast }) {
+      const [categories, setCategories] = useState([]);
+      const [items, setItems] = useState([]);
+      const [form, setForm] = useState({
+        dsr_item_id: '', category:'', description:'', length:'', breadth:'', height:'', manual_qty:'', manual_rate:''
+      });
+      const [preview, setPreview] = useState({ qty:0, amount:0 });
+      const [saving, setSaving] = useState(false);
+
+      useEffect(() => {
+        api('GET', '/api/dsr/categories').then(setCategories).catch(() => {});
+      }, []);
+
+      useEffect(() => {
+        if (!form.category) { setItems([]); return; }
+        api('GET', '/api/dsr/items?category=' + encodeURIComponent(form.category))
+          .then(setItems).catch(() => {});
+      }, [form.category]);
+
+      useEffect(() => {
+        const l = parseFloat(form.length)||0, b = parseFloat(form.breadth)||0, h = parseFloat(form.height)||0;
+        const mq = parseFloat(form.manual_qty)||0;
+        const qty = l>0 && b>0 && h>0 ? parseFloat((l*b*h).toFixed(3)) : mq;
+        const selectedItem = items.find(i => String(i.ID) === form.dsr_item_id);
+        const rate = parseFloat(form.manual_rate) || (selectedItem?.Rate||0);
+        setPreview({ qty, amount: parseFloat((qty * rate).toFixed(2)) });
+      }, [form, items]);
+
+      const set = k => e => {
+        const v = e.target.value;
+        const updated = { ...form, [k]: v };
+        if (k === 'dsr_item_id') {
+          const sel = items.find(i => String(i.ID) === v);
+          if (sel) { updated.description = sel.Description; updated.manual_rate = ''; }
+        }
+        if (k === 'category') { updated.dsr_item_id = ''; updated.description = ''; }
+        setForm(updated);
+      };
+
+      const submit = async (e) => {
+        e.preventDefault(); setSaving(true);
+        const body = {
+          dsr_item_id: form.dsr_item_id ? parseInt(form.dsr_item_id) : null,
+          description: form.description,
+          category: form.category,
+          length: parseFloat(form.length)||0,
+          breadth: parseFloat(form.breadth)||0,
+          height: parseFloat(form.height)||0,
+          manual_qty: parseFloat(form.manual_qty)||0,
+          manual_rate: parseFloat(form.manual_rate)||0,
+        };
+        try {
+          await api('POST', '/api/projects/' + projectID + '/boq', body);
+          showToast('Item added!'); onSaved();
+        } catch(err) { showToast(err.message, 'error'); }
+        finally { setSaving(false); }
+      };
+
+      const selectedItem = items.find(i => String(i.ID) === form.dsr_item_id);
+
+      return (
+        <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
+          <div className="modal" style={{ maxWidth:600 }}>
+            <div className="modal-header">
+              <h3>Add BOQ Item</h3>
+              <button className="close-btn" onClick={onClose}>×</button>
+            </div>
+            <form onSubmit={submit}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                <div className="form-group">
+                  <label className="label">Category *</label>
+                  <select id="sel-category" className="select" value={form.category} onChange={set('category')} required>
+                    <option value="">— Select category —</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    <option value="__custom__">Custom / Manual</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="label">DSR Work Item</label>
+                  <select id="sel-dsr-item" className="select" value={form.dsr_item_id} onChange={set('dsr_item_id')} disabled={!form.category || form.category==='__custom__'}>
+                    <option value="">— Select work item —</option>
+                    {items.map(i => <option key={i.ID} value={i.ID}>[{i.Code}] {i.Description} — ₹{i.Rate.toLocaleString('en-IN')}/{i.Unit}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Description *</label>
+                <input id="inp-desc" className="input" placeholder="Description of work item" value={form.description} onChange={set('description')} required/>
+              </div>
+
+              {selectedItem && (
+                <div style={{ background:'var(--surface2)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13,display:'flex',gap:16 }}>
+                  <span><span className="tag">{selectedItem.Code}</span></span>
+                  <span style={{ color:'var(--text-muted)' }}>DSR Rate:</span>
+                  <span style={{ color:'var(--accent)', fontWeight:600 }}>₹{selectedItem.Rate.toLocaleString('en-IN')} / {selectedItem.Unit}</span>
+                </div>
+              )}
+
+              <div className="divider"/>
+              <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:12 }}>
+                Enter L × B × H to auto-calculate Qty in CUM, or enter Qty manually below.
+              </p>
+
+              <div className="boq-form-grid" style={{ marginBottom:12 }}>
+                <div className="form-group" style={{ marginBottom:0 }}>
+                  <label className="label">Length (m)</label>
+                  <input id="inp-length" className="input" type="number" step="0.001" placeholder="0.000" value={form.length} onChange={set('length')}/>
+                </div>
+                <div className="form-group" style={{ marginBottom:0 }}>
+                  <label className="label">Breadth (m)</label>
+                  <input id="inp-breadth" className="input" type="number" step="0.001" placeholder="0.000" value={form.breadth} onChange={set('breadth')}/>
+                </div>
+                <div className="form-group" style={{ marginBottom:0 }}>
+                  <label className="label">Height / Depth (m)</label>
+                  <input id="inp-height" className="input" type="number" step="0.001" placeholder="0.000" value={form.height} onChange={set('height')}/>
+                </div>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+                <div className="form-group" style={{ marginBottom:0 }}>
+                  <label className="label">Manual Qty (CUM)</label>
+                  <input id="inp-manual-qty" className="input" type="number" step="0.001" placeholder="If not using L×B×H" value={form.manual_qty} onChange={set('manual_qty')}/>
+                </div>
+                <div className="form-group" style={{ marginBottom:0 }}>
+                  <label className="label">Rate Override (₹/CUM)</label>
+                  <input id="inp-manual-rate" className="input" type="number" step="0.01" placeholder={selectedItem ? String(selectedItem.Rate) : 'Enter rate'} value={form.manual_rate} onChange={set('manual_rate')}/>
+                </div>
+              </div>
+
+              {/* Live preview */}
+              {(preview.qty > 0) && (
+                <div style={{ background:'var(--accent-soft)', border:'1px solid var(--accent)', borderRadius:8, padding:'12px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                  <span>Qty: <strong>{preview.qty.toFixed(3)} CUM</strong></span>
+                  <span>Amount: <strong style={{ color:'var(--accent)' }}>₹{preview.amount.toLocaleString('en-IN', { minimumFractionDigits:2 })}</strong></span>
+                </div>
+              )}
+
+              <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+                <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+                <button id="btn-add-item" type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? <span className="spinner"/> : 'Add to BOQ'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Project Sheet (BOQ) ──────────────────────────────────────────────────────
+    function ProjectSheet({ project, onBack, showToast }) {
+      const [sheet, setSheet] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [showAdd, setShowAdd] = useState(false);
+      const [exporting, setExporting] = useState(false);
+
+      const load = useCallback(async () => {
+        setLoading(true);
+        try { setSheet(await api('GET', '/api/projects/' + project.ID + '/boq')); }
+        catch(e) { showToast(e.message, 'error'); }
+        finally { setLoading(false); }
+      }, [project.ID]);
+
+      useEffect(() => { load(); }, [load]);
+
+      const deleteEntry = async (id) => {
+        if (!confirm('Remove this item?')) return;
+        try { await api('DELETE', '/api/projects/' + project.ID + '/boq/' + id); load(); showToast('Item removed'); }
+        catch(e) { showToast(e.message, 'error'); }
+      };
+
+      const exportPDF = async () => {
+        setExporting(true);
+        try {
+          const token = getToken();
+          const res = await fetch('/api/projects/' + project.ID + '/export/pdf', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url;
+          a.download = 'BOQ_' + project.Name.replace(/\s+/g,'_') + '.pdf';
+          a.click(); URL.revokeObjectURL(url);
+          showToast('PDF downloaded!');
+        } catch(e) { showToast(e.message, 'error'); }
+        finally { setExporting(false); }
+      };
+
+      const fmt = (n) => (n||0).toLocaleString('en-IN', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+      return (
+        <div>
+          <div className="page-header">
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <button id="btn-back" className="btn btn-outline btn-sm" onClick={onBack}>← Back</button>
+              <div>
+                <h2>{project.Name}</h2>
+                <p style={{ color:'var(--text-muted)', fontSize:13, marginTop:2 }}>
+                  {project.ClientName && <span>👤 {project.ClientName}  </span>}
+                  {project.Location && <span>📍 {project.Location}</span>}
+                </p>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button id="btn-export-pdf" className="btn btn-outline" onClick={exportPDF} disabled={exporting || !sheet?.entries?.length}>
+                {exporting ? <span className="spinner"/> : '↓ PDF'}
+              </button>
+              <button id="btn-add-item" className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Item</button>
+            </div>
+          </div>
+
+          <div className="card" style={{ padding:0, overflow:'hidden' }}>
+            {loading ? (
+              <div style={{ textAlign:'center', padding:60 }}><span className="spinner"/></div>
+            ) : !sheet?.entries?.length ? (
+              <div className="empty-state">
+                <div className="icon">📋</div>
+                <h3>BOQ sheet is empty</h3>
+                <p>Add your first work item to get started</p>
+                <button className="btn btn-primary" style={{ marginTop:16 }} onClick={() => setShowAdd(true)}>+ Add Item</button>
+              </div>
+            ) : (
+              <div style={{ overflowX:'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width:40 }}>Sr.</th>
+                      <th>Description of Work</th>
+                      <th style={{ width:90 }}>Category</th>
+                      <th className="text-right" style={{ width:65 }}>L (m)</th>
+                      <th className="text-right" style={{ width:65 }}>B (m)</th>
+                      <th className="text-right" style={{ width:65 }}>H (m)</th>
+                      <th className="text-right" style={{ width:90 }}>Qty (CUM)</th>
+                      <th className="text-right" style={{ width:100 }}>Rate (₹)</th>
+                      <th className="text-right" style={{ width:120 }}>Amount (₹)</th>
+                      <th style={{ width:40 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sheet.entries.map(e => (
+                      <tr key={e.ID}>
+                        <td className="text-center" style={{ color:'var(--text-muted)' }}>{e.ItemNo}</td>
+                        <td style={{ maxWidth:280 }}>
+                          <div style={{ fontWeight:500 }}>{e.Description}</div>
+                        </td>
+                        <td><span className="badge badge-blue">{e.Category}</span></td>
+                        <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Length>0?e.Length.toFixed(2):'—'}</td>
+                        <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Breadth>0?e.Breadth.toFixed(2):'—'}</td>
+                        <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Height>0?e.Height.toFixed(2):'—'}</td>
+                        <td className="text-right amount-cell" style={{ fontVariantNumeric:'tabular-nums' }}>{e.Quantity.toFixed(3)}</td>
+                        <td className="text-right" style={{ fontVariantNumeric:'tabular-nums' }}>{fmt(e.Rate)}</td>
+                        <td className="text-right amount-cell" style={{ color:'var(--accent)', fontVariantNumeric:'tabular-nums' }}>{fmt(e.Amount)}</td>
+                        <td className="text-center">
+                          <button className="btn btn-danger btn-sm" style={{ padding:'3px 7px' }} onClick={() => deleteEntry(e.ID)}>×</button>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="grand-total-row">
+                      <td colSpan={8} style={{ textAlign:'right', paddingRight:16 }}>Grand Total</td>
+                      <td className="text-right amount-cell">₹{fmt(sheet.grand_total)}</td>
+                      <td></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {showAdd && (
+            <BOQEntryModal
+              projectID={project.ID}
+              showToast={showToast}
+              onClose={() => setShowAdd(false)}
+              onSaved={() => { setShowAdd(false); load(); }}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // ─── App Root ─────────────────────────────────────────────────────────────────
+    function App() {
+      const [user, setUser] = useState(getUser);
+      const [page, setPage] = useState('dashboard');
+      const [currentProject, setCurrentProject] = useState(null);
+      const [toastEl, showToast] = useToast();
+
+      const login = (u) => { setUser(u); setPage('dashboard'); };
+      const logout = () => {
+        localStorage.removeItem('xtm_token');
+        localStorage.removeItem('xtm_user');
+        setUser(null); setPage('dashboard'); setCurrentProject(null);
+      };
+      const openProject = (p) => { setCurrentProject(p); setPage('project'); };
+      const backToDash = () => { setCurrentProject(null); setPage('dashboard'); };
+
+      if (!user) return <><AuthPage onLogin={login}/>{toastEl}</>;
+
+      return (
+        <>
+          <Sidebar user={user} page={page} onNav={setPage} onLogout={logout}/>
+          <div className="main-content">
+            {page === 'dashboard' && <Dashboard onOpenProject={openProject} showToast={showToast}/>}
+            {page === 'project' && currentProject && <ProjectSheet project={currentProject} onBack={backToDash} showToast={showToast}/>}
+          </div>
+          {toastEl}
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>`
