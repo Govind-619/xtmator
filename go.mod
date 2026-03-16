@@ -3,6 +3,7 @@ module github.com/Govind-619/xtmator
 go 1.25.1
 
 require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/f-amaral/go-async v0.3.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
@@ -11,6 +12,7 @@ require (
 	github.com/hhrutter/tiff v1.0.1 // indirect
 	github.com/johnfercher/go-tree v1.0.5 // indirect
 	github.com/johnfercher/maroto/v2 v2.3.3 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mattn/go-sqlite3 v1.14.34 // indirect
 	github.com/pdfcpu/pdfcpu v0.6.0 // indirect
@@ -27,6 +29,7 @@ require (
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/image v0.25.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

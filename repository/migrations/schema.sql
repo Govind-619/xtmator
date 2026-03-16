@@ -3,9 +3,12 @@ CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     name          TEXT NOT NULL,
     email         TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,                          -- nullable for Google-only accounts
+    google_id     TEXT UNIQUE,                   -- Google subject ID
+    auth_provider TEXT NOT NULL DEFAULT 'email', -- 'email' | 'google'
     created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
 
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (

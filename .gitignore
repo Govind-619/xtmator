@@ -3,13 +3,17 @@
 *.db-shm
 *.db-wal
 
-# Compiled binaries
-xtmator_bin
-xtmator
-/cmd/xtmator/xtmator
+# Environment / secrets — never commit credentials
+.env
+.env.*
 
-# DSR import binary
-import-dsr
+
+# Compiled binaries (rooted so they don't match source directories)
+/xtmator_bin
+/import-dsr
+/cmd/xtmator/xtmator
+/cmd/import-dsr/import-dsr
+
 
 # OS / editor
 .DS_Store

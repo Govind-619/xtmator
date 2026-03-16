@@ -19,7 +19,7 @@ const spaHTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Xtmator — Construction BOQ System</title>
+  <title>XTMATOR — Construction BOQ System</title>
   <meta name="description" content="Professional Construction Estimation and Quantity Surveying System based on DSR rates"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -143,6 +143,19 @@ const spaHTML = `<!DOCTYPE html>
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState('');
 
+      // Password strength for registration UX
+      const pwStrength = React.useMemo(() => {
+        const p = form.password;
+        if (!p) return null;
+        const checks = [
+          { label: '8+ characters', ok: p.length >= 8 },
+          { label: 'Uppercase letter', ok: /[A-Z]/.test(p) },
+          { label: 'Lowercase letter', ok: /[a-z]/.test(p) },
+          { label: 'Number', ok: /[0-9]/.test(p) },
+        ];
+        return checks;
+      }, [form.password]);
+
       const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
       const submit = async (e) => {
@@ -166,7 +179,7 @@ const spaHTML = `<!DOCTYPE html>
 
       return (
         <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-          <div style={{ width:'100%', maxWidth:400 }}>
+          <div style={{ width:'100%', maxWidth:420 }}>
             {/* Logo */}
             <div style={{ textAlign:'center', marginBottom:32 }}>
               <h1 style={{ fontSize:32, fontWeight:800, background:'linear-gradient(135deg,#3b82f6,#60a5fa)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
@@ -177,6 +190,7 @@ const spaHTML = `<!DOCTYPE html>
               </p>
             </div>
             <div className="card">
+              {/* Tab switcher */}
               <div style={{ display:'flex', borderRadius:8, background:'var(--surface2)', padding:3, marginBottom:24 }}>
                 {['login','register'].map(m => (
                   <button key={m} onClick={() => { setMode(m); setError(''); }}
@@ -187,6 +201,37 @@ const spaHTML = `<!DOCTYPE html>
                   </button>
                 ))}
               </div>
+
+              {/* Google Sign-In button */}
+              <a href="/api/auth/google"
+                id="btn-google"
+                style={{
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:10,
+                  padding:'10px 16px', borderRadius:8, border:'1px solid var(--border)',
+                  background:'#fff', color:'#3c4043', fontWeight:600, fontSize:14,
+                  textDecoration:'none', marginBottom:16, transition:'box-shadow .15s',
+                  cursor:'pointer',
+                }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,.2)'}
+                onMouseLeave={e => e.currentTarget.style.boxShadow='none'}
+              >
+                {/* Google G logo SVG */}
+                <svg width="18" height="18" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.8 2.2 30.2 0 24 0 14.7 0 6.7 5.4 2.8 13.3l7.9 6.1C12.6 13 17.9 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.6 5.9C43.7 37.5 46.5 31.5 46.5 24.5z"/>
+                  <path fill="#FBBC05" d="M10.7 28.6A14.4 14.4 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6L2.4 13.3A23.9 23.9 0 0 0 0 24c0 3.9.9 7.6 2.8 10.8l7.9-6.2z"/>
+                  <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.6-5.9c-2 1.4-4.6 2.2-7.6 2.2-6.1 0-11.3-4.1-13.2-9.7l-7.9 6.2C6.7 42.6 14.7 48 24 48z"/>
+                </svg>
+                Continue with Google
+              </a>
+
+              {/* Divider */}
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
+                <div style={{ flex:1, height:1, background:'var(--border)' }}/>
+                <span style={{ color:'var(--text-dim)', fontSize:12 }}>or with email</span>
+                <div style={{ flex:1, height:1, background:'var(--border)' }}/>
+              </div>
+
               <form onSubmit={submit}>
                 {mode === 'register' && (
                   <div className="form-group">
@@ -201,6 +246,22 @@ const spaHTML = `<!DOCTYPE html>
                 <div className="form-group">
                   <label className="label">Password</label>
                   <input id="inp-password" className="input" type="password" placeholder="••••••••" value={form.password} onChange={set('password')} required/>
+                  {/* Password strength indicator for registration */}
+                  {mode === 'register' && pwStrength && (
+                    <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginTop:8 }}>
+                      {pwStrength.map(c => (
+                        <span key={c.label} style={{
+                          fontSize:11, padding:'2px 8px', borderRadius:20,
+                          background: c.ok ? 'rgba(34,197,94,.15)' : 'var(--surface2)',
+                          color: c.ok ? 'var(--success)' : 'var(--text-dim)',
+                          border: '1px solid ' + (c.ok ? 'rgba(34,197,94,.3)' : 'var(--border)'),
+                          transition:'all .2s',
+                        }}>
+                          {c.ok ? '✓' : '○'} {c.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {error && <p style={{ color:'var(--danger)', fontSize:13, marginBottom:14 }}>⚠ {error}</p>}
                 <button id="btn-submit" className="btn btn-primary" style={{ width:'100%', justifyContent:'center', padding:'11px 0', fontSize:15 }} disabled={loading}>
@@ -219,7 +280,7 @@ const spaHTML = `<!DOCTYPE html>
       return (
         <div className="sidebar">
           <div className="sidebar-logo">
-            <h1>Xtmator</h1>
+            <h1>XTMATOR</h1>
             <p>BOQ Estimation System</p>
           </div>
           <div className="sidebar-nav">
@@ -637,7 +698,24 @@ const spaHTML = `<!DOCTYPE html>
 
     // ─── App Root ─────────────────────────────────────────────────────────────────
     function App() {
-      const [user, setUser] = useState(getUser);
+      const [user, setUser] = useState(() => {
+        // Handle Google OAuth callback: pick up ?token= from URL
+        const params = new URLSearchParams(window.location.search);
+        const urlToken = params.get('token');
+        if (urlToken) {
+          // Decode user from JWT payload (middle base64 part)
+          try {
+            const payload = JSON.parse(atob(urlToken.split('.')[1]));
+            const u = { id: payload.sub, name: payload.name, email: '' };
+            localStorage.setItem('xtm_token', urlToken);
+            localStorage.setItem('xtm_user', JSON.stringify(u));
+            // Clean URL
+            window.history.replaceState({}, '', '/');
+            return u;
+          } catch(e) { /* ignore malformed token */ }
+        }
+        return getUser();
+      });
       const [page, setPage] = useState('dashboard');
       const [currentProject, setCurrentProject] = useState(null);
       const [toastEl, showToast] = useToast();

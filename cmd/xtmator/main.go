@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"time"
+
+	"github.com/joho/godotenv"
 
 	"github.com/Govind-619/xtmator/handler"
 	"github.com/Govind-619/xtmator/repository"
@@ -26,54 +29,76 @@ func openBrowser(url string) {
 		err = fmt.Errorf("unsupported platform")
 	}
 	if err != nil {
-		log.Printf("Could not open browser automatically: %v", err)
+		log.Printf("Could not open browser: %v", err)
 	}
 }
 
 func main() {
-	// ── 1. Database ──────────────────────────────────────────────────────────────
-	db, err := repository.NewSQLiteDB("xtmator.db")
+	// ── 0. Load environment ───────────────────────────────────────────────────────
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found — using system environment variables")
+	}
+
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "xtmator.db"
+	}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3333"
+	}
+
+	// ── 1. Database ───────────────────────────────────────────────────────────────
+	db, err := repository.NewSQLiteDB(dbPath)
 	if err != nil {
 		log.Fatalf("Database init failed: %v", err)
 	}
 	defer db.Close()
 
-	// ── 2. Repositories ──────────────────────────────────────────────────────────
-	userRepo    := repository.NewUserRepository(db)
+	// ── 2. Repositories ───────────────────────────────────────────────────────────
+	userRepo := repository.NewUserRepository(db)
 	projectRepo := repository.NewProjectRepository(db)
-	dsrRepo     := repository.NewDSRRepository(db)
-	boqRepo     := repository.NewBOQRepository(db)
+	dsrRepo := repository.NewDSRRepository(db)
+	boqRepo := repository.NewBOQRepository(db)
 
-	// ── 3. Usecases ──────────────────────────────────────────────────────────────
-	authUC    := usecase.NewAuthUsecase(userRepo)
+	// ── 3. Usecases ───────────────────────────────────────────────────────────────
+	authUC := usecase.NewAuthUsecase(userRepo)
+	googleAuthUC := usecase.NewGoogleOAuthUsecase(userRepo, authUC)
 	projectUC := usecase.NewProjectUsecase(projectRepo)
-	boqUC     := usecase.NewBOQUsecase(boqRepo, dsrRepo, projectRepo)
+	boqUC := usecase.NewBOQUsecase(boqRepo, dsrRepo, projectRepo)
 
-	// ── 4. Handlers ──────────────────────────────────────────────────────────────
-	webH    := handler.NewWebHandler()
-	authH   := handler.NewAuthHandler(authUC)
-	projH   := handler.NewProjectHandler(projectUC, authUC)
-	dsrH    := handler.NewDSRHandler(dsrRepo)
-	boqH    := handler.NewBOQHandler(boqUC, authUC)
+	// ── 4. Handlers ───────────────────────────────────────────────────────────────
+	webH := handler.NewWebHandler()
+	authH := handler.NewAuthHandler(authUC)
+	googleH := handler.NewGoogleAuthHandler(googleAuthUC)
+	projH := handler.NewProjectHandler(projectUC, authUC)
+	dsrH := handler.NewDSRHandler(dsrRepo)
+	boqH := handler.NewBOQHandler(boqUC, authUC)
 	exportH := handler.NewExportHandler(boqUC, authUC)
 
-	// ── 5. Router ────────────────────────────────────────────────────────────────
+	// ── 5. Rate limiters ──────────────────────────────────────────────────────────
+	authLimiter := handler.NewRateLimiter(10, time.Minute) // 10 req/min on auth
+	apiLimiter := handler.NewRateLimiter(120, time.Minute) // 120 req/min on API
+
+	// ── 6. Router ─────────────────────────────────────────────────────────────────
 	mux := http.NewServeMux()
 
-	// SPA — serve React app for all non-API routes
+	// SPA shell
 	mux.HandleFunc("/", webH.Home)
 
-	// Auth (public)
-	mux.HandleFunc("/api/auth/register", authH.Register)
-	mux.HandleFunc("/api/auth/login",    authH.Login)
+	// Auth (rate limited, public)
+	mux.HandleFunc("/api/auth/register", authLimiter.Middleware(authH.Register))
+	mux.HandleFunc("/api/auth/login", authLimiter.Middleware(authH.Login))
+	mux.HandleFunc("/api/auth/google", googleH.InitiateLogin)
+	mux.HandleFunc("/api/auth/google/callback", googleH.Callback)
 
-	// DSR catalogue (protected)
-	mux.HandleFunc("/api/dsr/categories", handler.JWTAuth(authUC, dsrH.Categories))
-	mux.HandleFunc("/api/dsr/items",      handler.JWTAuth(authUC, dsrH.Items))
+	// DSR catalogue (JWT + rate limited)
+	mux.HandleFunc("/api/dsr/categories", apiLimiter.Middleware(handler.JWTAuth(authUC, dsrH.Categories)))
+	mux.HandleFunc("/api/dsr/items", apiLimiter.Middleware(handler.JWTAuth(authUC, dsrH.Items)))
 
-	// Projects (protected)
-	mux.HandleFunc("/api/projects",    handler.JWTAuth(authUC, projH.HandleProjects))
-	mux.HandleFunc("/api/projects/",   handler.JWTAuth(authUC, func(w http.ResponseWriter, r *http.Request) {
+	// Projects + BOQ (JWT + rate limited)
+	mux.HandleFunc("/api/projects", apiLimiter.Middleware(handler.JWTAuth(authUC, projH.HandleProjects)))
+	mux.HandleFunc("/api/projects/", apiLimiter.Middleware(handler.JWTAuth(authUC, func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
 		case isExportPath(path):
@@ -85,38 +110,35 @@ func main() {
 		default:
 			projH.HandleProject(w, r)
 		}
-	}))
+	})))
 
-	// ── 6. Server ────────────────────────────────────────────────────────────────
-	port := ":3333"
-	url  := "http://localhost" + port
-	fmt.Printf("🏗  Xtmator started → %s\n", url)
+	// ── 7. Security headers wrapper ───────────────────────────────────────────────
+	secured := handler.SecureHeaders(mux)
+
+	// ── 8. Start ──────────────────────────────────────────────────────────────────
+	addr := ":" + port
+	url := "http://localhost" + addr
+	fmt.Printf("🏗  XTMATOR started → %s\n", url)
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		openBrowser(url)
 	}()
 
-	if err := http.ListenAndServe(port, mux); err != nil {
+	if err := http.ListenAndServe(addr, secured); err != nil {
 		log.Fatal("Server error: ", err)
 	}
 }
 
-// Path matchers for the /api/projects/* multiplex handler
 func isExportPath(p string) bool {
-	// /api/projects/42/export/pdf
-	for i := len(p) - 1; i >= 0; i-- {
-		if p[i] == '/' { return p[i+1:] == "pdf"; }
-	}
-	return false
+	parts := splitPath(p)
+	return len(parts) >= 5 && parts[len(parts)-1] == "pdf"
 }
 func isBOQEntryPath(p string) bool {
-	// /api/projects/42/boq/7
 	parts := splitPath(p)
 	return len(parts) == 5 && parts[3] == "boq"
 }
 func isBOQPath(p string) bool {
-	// /api/projects/42/boq
 	parts := splitPath(p)
 	return len(parts) >= 4 && parts[3] == "boq"
 }
@@ -125,12 +147,16 @@ func splitPath(p string) []string {
 	cur := ""
 	for _, c := range p {
 		if c == '/' {
-			if cur != "" { out = append(out, cur) }
+			if cur != "" {
+				out = append(out, cur)
+			}
 			cur = ""
 		} else {
 			cur += string(c)
 		}
 	}
-	if cur != "" { out = append(out, cur) }
+	if cur != "" {
+		out = append(out, cur)
+	}
 	return out
 }
