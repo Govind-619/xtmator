@@ -102,7 +102,12 @@ func main() {
 		path := r.URL.Path
 		switch {
 		case isExportPath(path):
-			exportH.ExportPDF(w, r)
+			parts := splitPath(path)
+			if parts[len(parts)-1] == "excel" {
+				exportH.ExportExcel(w, r)
+			} else {
+				exportH.ExportPDF(w, r)
+			}
 		case isBOQEntryPath(path):
 			boqH.HandleBOQEntry(w, r)
 		case isBOQPath(path):
@@ -132,7 +137,7 @@ func main() {
 
 func isExportPath(p string) bool {
 	parts := splitPath(p)
-	return len(parts) >= 5 && parts[len(parts)-1] == "pdf"
+	return len(parts) >= 5 && (parts[len(parts)-1] == "pdf" || parts[len(parts)-1] == "excel")
 }
 func isBOQEntryPath(p string) bool {
 	parts := splitPath(p)

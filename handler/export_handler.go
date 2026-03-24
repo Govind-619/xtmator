@@ -10,6 +10,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/page"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
+	"github.com/xuri/excelize/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
@@ -142,8 +143,8 @@ func (h *ExportHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 			col.New(1).WithStyle(cStyle).Add(text.New(fmt.Sprintf("%.2f", e.Breadth), numStyle)),
 			col.New(1).WithStyle(cStyle).Add(text.New(fmt.Sprintf("%.2f", e.Height), numStyle)),
 			col.New(1).WithStyle(cStyle).Add(text.New(fmt.Sprintf("%.3f", e.Quantity), numStyle)),
-			col.New(1).WithStyle(cStyle).Add(text.New(fmt.Sprintf("%.2f", e.Rate), numStyle)),
-			col.New(1).WithStyle(cStyle).Add(text.New(fmt.Sprintf("%.2f", e.Amount), numStyle)),
+			col.New(1).WithStyle(cStyle).Add(text.New(formatIndianCurrency(e.Rate), numStyle)),
+			col.New(1).WithStyle(cStyle).Add(text.New(formatIndianCurrency(e.Amount), numStyle)),
 		)
 		sr++
 	}
@@ -156,7 +157,7 @@ func (h *ExportHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 	// Grand total
 	m.AddRows(row.New(12).Add(
 		col.New(10).WithStyle(cStyle).Add(text.New("GRAND TOTAL", sumLabelStyle)),
-		col.New(2).WithStyle(cStyle).Add(text.New(fmt.Sprintf("Rs. %.2f", sheet.GrandTotal), sumValStyle)),
+		col.New(2).WithStyle(cStyle).Add(text.New("Rs. "+formatIndianCurrency(sheet.GrandTotal), sumValStyle)),
 	))
 
 	m.AddRow(8) // spacer
@@ -189,7 +190,7 @@ func (h *ExportHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 			col.New(9).WithStyle(cStyle).Add(text.New(cat, props.Text{
 				Size: 9, Style: fontstyle.Bold, Align: align.Left, Top: 2, Bottom: 2, Left: 2, Right: 2,
 			})),
-			col.New(2).WithStyle(cStyle).Add(text.New(fmt.Sprintf("%.2f", catSums[cat]), props.Text{
+			col.New(2).WithStyle(cStyle).Add(text.New(formatIndianCurrency(catSums[cat]), props.Text{
 				Size: 9, Style: fontstyle.Bold, Align: align.Right, Top: 2, Bottom: 2, Left: 2, Right: 2,
 			})),
 		))
@@ -200,7 +201,7 @@ func (h *ExportHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 	// Add Grand Total to the bottom of the summary table
 	summaryPage.Add(row.New(12).Add(
 		col.New(10).WithStyle(cStyle).Add(text.New("GRAND TOTAL", sumLabelStyle)),
-		col.New(2).WithStyle(cStyle).Add(text.New(fmt.Sprintf("Rs. %.2f", sheet.GrandTotal), sumValStyle)),
+		col.New(2).WithStyle(cStyle).Add(text.New("Rs. "+formatIndianCurrency(sheet.GrandTotal), sumValStyle)),
 	))
 
 	summaryPage.Add(row.New(12)) // spacer
@@ -255,4 +256,154 @@ func sanitizeFilename(s string) string {
 		}
 	}
 	return string(out)
+}
+
+func formatIndianCurrency(val float64) string {
+	s := fmt.Sprintf("%.2f", val)
+	parts := strings.Split(s, ".")
+	intPart := parts[0]
+	n := len(intPart)
+	if n <= 3 {
+		return s
+	}
+	res := intPart[n-3:]
+	intPart = intPart[:n-3]
+	for len(intPart) > 0 {
+		if len(intPart) > 2 {
+			res = intPart[len(intPart)-2:] + "," + res
+			intPart = intPart[:len(intPart)-2]
+		} else {
+			res = intPart + "," + res
+			break
+		}
+	}
+	return res + "." + parts[1]
+}
+
+func (h *ExportHandler) ExportExcel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID := getUserID(r)
+	projectID := extractProjectID(r.URL.Path)
+	if projectID == 0 {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.auth.GetUser(userID)
+	if err != nil || user == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sheet, err := h.boq.GetSheet(projectID, userID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	f := excelize.NewFile()
+	defer func() {
+		if err := f.Close(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	f.SetSheetName("Sheet1", "BOQ")
+
+	// Main BOQ Sheet Headers
+	headers := []interface{}{"Sr.", "Description of Work", "Category", "L (m)", "B (m)", "H (m)", "Qty", "Rate (Rs.)", "Amount (Rs.)"}
+	f.SetSheetRow("BOQ", "A1", &headers)
+
+	// Make headers bold
+	styleBold, _ := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+	f.SetRowStyle("BOQ", 1, 1, styleBold)
+
+	catSums := make(map[string]float64)
+	var cats []string
+	var lastCat string
+	sr := 1
+	rowIdx := 2
+
+	for _, e := range sheet.Entries {
+		if _, ok := catSums[e.Category]; !ok {
+			cats = append(cats, e.Category)
+		}
+		catSums[e.Category] += e.Amount
+
+		if e.Category != lastCat {
+			// Category row spanning 9 columns visually, just bolding column B 
+			f.SetCellValue("BOQ", fmt.Sprintf("B%d", rowIdx), "Category: "+e.Category)
+			f.SetCellStyle("BOQ", fmt.Sprintf("B%d", rowIdx), fmt.Sprintf("B%d", rowIdx), styleBold)
+			lastCat = e.Category
+			rowIdx++
+		}
+
+		desc := e.Description
+		if e.DSRItemCode != "" && !strings.Contains(e.Description, "["+e.DSRItemCode+"]") {
+			desc = fmt.Sprintf("[%s] %s", e.DSRItemCode, e.Description)
+		}
+
+		l := ""
+		if e.Length > 0 {
+			l = fmt.Sprintf("%.2f", e.Length)
+		}
+		b := ""
+		if e.Breadth > 0 {
+			b = fmt.Sprintf("%.2f", e.Breadth)
+		}
+		height := ""
+		if e.Height > 0 {
+			height = fmt.Sprintf("%.2f", e.Height)
+		}
+
+		row := []interface{}{
+			sr,
+			desc,
+			e.Category,
+			l,
+			b,
+			height,
+			fmt.Sprintf("%.3f %s", e.Quantity, e.Unit),
+			e.Rate,
+			e.Amount,
+		}
+		f.SetSheetRow("BOQ", fmt.Sprintf("A%d", rowIdx), &row)
+		sr++
+		rowIdx++
+	}
+
+	rowIdx++
+	f.SetCellValue("BOQ", fmt.Sprintf("H%d", rowIdx), "GRAND TOTAL")
+	f.SetCellValue("BOQ", fmt.Sprintf("I%d", rowIdx), sheet.GrandTotal)
+	f.SetCellStyle("BOQ", fmt.Sprintf("H%d", rowIdx), fmt.Sprintf("I%d", rowIdx), styleBold)
+
+	rowIdx += 2
+	f.SetCellValue("BOQ", fmt.Sprintf("B%d", rowIdx), "Created by: "+user.Name)
+
+	// Summary Sheet
+	f.NewSheet("Summarized")
+	sumHeaders := []interface{}{"Sr. No.", "Category", "Amount (Rs.)"}
+	f.SetSheetRow("Summarized", "A1", &sumHeaders)
+	f.SetRowStyle("Summarized", 1, 1, styleBold)
+
+	sumRowIdx := 2
+	for i, cat := range cats {
+		f.SetSheetRow("Summarized", fmt.Sprintf("A%d", sumRowIdx), &[]interface{}{i + 1, cat, catSums[cat]})
+		sumRowIdx++
+	}
+
+	sumRowIdx++
+	f.SetCellValue("Summarized", fmt.Sprintf("B%d", sumRowIdx), "GRAND TOTAL")
+	f.SetCellValue("Summarized", fmt.Sprintf("C%d", sumRowIdx), sheet.GrandTotal)
+	f.SetCellStyle("Summarized", fmt.Sprintf("B%d", sumRowIdx), fmt.Sprintf("C%d", sumRowIdx), styleBold)
+
+	f.SetActiveSheet(0)
+
+	filename := fmt.Sprintf("BOQ_%s.xlsx", sanitizeFilename(sheet.Project.Name))
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	f.Write(w)
 }

@@ -698,6 +698,24 @@ const spaHTML = `<!DOCTYPE html>
         finally { setExporting(false); }
       };
 
+      const exportExcel = async () => {
+        setExporting(true);
+        try {
+          const token = getToken();
+          const res = await fetch('/api/projects/' + project.ID + '/export/excel', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url;
+          a.download = 'BOQ_' + project.Name.replace(/\s+/g,'_') + '.xlsx';
+          a.click(); URL.revokeObjectURL(url);
+          showToast('Excel downloaded!');
+        } catch(e) { showToast(e.message, 'error'); }
+        finally { setExporting(false); }
+      };
+
       const fmt = (n) => (n||0).toLocaleString('en-IN', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
       return (
@@ -716,6 +734,9 @@ const spaHTML = `<!DOCTYPE html>
             <div style={{ display:'flex', gap:10 }}>
               <button id="btn-export-pdf" className="btn btn-outline" onClick={exportPDF} disabled={exporting || !sheet?.entries?.length}>
                 {exporting ? <span className="spinner"/> : '↓ PDF'}
+              </button>
+              <button id="btn-export-excel" className="btn btn-outline" onClick={exportExcel} disabled={exporting || !sheet?.entries?.length}>
+                {exporting ? <span className="spinner"/> : '↓ Excel'}
               </button>
               <button id="btn-add-item" className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Item</button>
             </div>
