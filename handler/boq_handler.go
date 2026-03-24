@@ -30,7 +30,8 @@ func (h *BOQHandler) HandleBOQ(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		sheet, err := h.boq.GetSheet(projectID, userID)
+		sheetID, _ := strconv.ParseInt(r.URL.Query().Get("sheet_id"), 10, 64)
+		sheet, err := h.boq.GetSheet(projectID, sheetID, userID)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusNotFound)
 			return
@@ -43,9 +44,11 @@ func (h *BOQHandler) HandleBOQ(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var req struct {
+			SheetID     int64   `json:"sheet_id"`
 			DSRItemID   *int64  `json:"dsr_item_id"`
 			Description string  `json:"description"`
 			Category    string  `json:"category"`
+			Unit        string  `json:"unit"`
 			Length      float64 `json:"length"`
 			Breadth     float64 `json:"breadth"`
 			Height      float64 `json:"height"`
@@ -57,9 +60,9 @@ func (h *BOQHandler) HandleBOQ(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		entry, err := h.boq.AddItem(
-			projectID,
+			projectID, req.SheetID,
 			req.DSRItemID,
-			req.Description, req.Category,
+			req.Description, req.Category, req.Unit,
 			req.Length, req.Breadth, req.Height,
 			req.ManualQty, req.ManualRate,
 		)
@@ -74,25 +77,44 @@ func (h *BOQHandler) HandleBOQ(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleBOQEntry handles DELETE /api/projects/:id/boq/:entryId
+// HandleBOQEntry handles DELETE and PUT /api/projects/:id/boq/:entryId
 func (h *BOQHandler) HandleBOQEntry(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 	projectID := extractProjectID(r.URL.Path)
-	// path: /api/projects/:id/boq/:entryId
 	parts := strings.Split(strings.TrimSuffix(r.URL.Path, "/"), "/")
 	entryID, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 	if err != nil || projectID == 0 {
 		jsonError(w, "invalid ids", http.StatusBadRequest)
 		return
 	}
-	if err := h.boq.DeleteItem(entryID, projectID); err != nil {
-		jsonError(w, err.Error(), http.StatusInternalServerError)
-		return
+
+	switch r.Method {
+	case http.MethodDelete:
+		if err := h.boq.DeleteItem(entryID, projectID); err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonOK(w, map[string]string{"status": "deleted"})
+	case http.MethodPut:
+		var req struct {
+			Length     float64 `json:"length"`
+			Breadth    float64 `json:"breadth"`
+			Height     float64 `json:"height"`
+			ManualQty  float64 `json:"manual_qty"`
+			ManualRate float64 `json:"manual_rate"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, "invalid body", http.StatusBadRequest)
+			return
+		}
+		entry, err := h.boq.UpdateItem(projectID, entryID, req.Length, req.Breadth, req.Height, req.ManualQty, req.ManualRate)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		jsonOK(w, entry)
+	default:
+		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
-	jsonOK(w, map[string]string{"status": "deleted"})
 }
 
 // extractProjectID pulls the numeric project ID from paths like /api/projects/42/boq

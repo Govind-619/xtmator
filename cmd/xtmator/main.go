@@ -60,21 +60,29 @@ func main() {
 	projectRepo := repository.NewProjectRepository(db)
 	dsrRepo := repository.NewDSRRepository(db)
 	boqRepo := repository.NewBOQRepository(db)
+	projectSheetRepo := repository.NewProjectSheetRepository(db)
+	customItemRepo := repository.NewCustomItemRepository(db)
 
 	// ── 3. Usecases ───────────────────────────────────────────────────────────────
 	authUC := usecase.NewAuthUsecase(userRepo)
 	googleAuthUC := usecase.NewGoogleOAuthUsecase(userRepo, authUC)
 	projectUC := usecase.NewProjectUsecase(projectRepo)
-	boqUC := usecase.NewBOQUsecase(boqRepo, dsrRepo, projectRepo)
+	boqUC := usecase.NewBOQUsecase(boqRepo, dsrRepo, projectRepo, projectSheetRepo)
+
+	customItemUC := usecase.NewCustomItemUsecase(customItemRepo)
 
 	// ── 4. Handlers ───────────────────────────────────────────────────────────────
 	webH := handler.NewWebHandler()
 	authH := handler.NewAuthHandler(authUC)
 	googleH := handler.NewGoogleAuthHandler(googleAuthUC)
 	projH := handler.NewProjectHandler(projectUC, authUC)
+	projSheetH := handler.NewProjectSheetHandler(projectSheetRepo)
 	dsrH := handler.NewDSRHandler(dsrRepo)
 	boqH := handler.NewBOQHandler(boqUC, authUC)
 	exportH := handler.NewExportHandler(boqUC, authUC)
+	shareH := handler.NewShareHandler(boqUC)
+
+	customItemH := handler.NewCustomItemHandler(customItemUC, authUC)
 
 	// ── 5. Rate limiters ──────────────────────────────────────────────────────────
 	authLimiter := handler.NewRateLimiter(10, time.Minute) // 10 req/min on auth
@@ -96,11 +104,20 @@ func main() {
 	mux.HandleFunc("/api/dsr/categories", apiLimiter.Middleware(handler.JWTAuth(authUC, dsrH.Categories)))
 	mux.HandleFunc("/api/dsr/items", apiLimiter.Middleware(handler.JWTAuth(authUC, dsrH.Items)))
 
+	// Custom Items (JWT + rate limited)
+	mux.HandleFunc("/api/custom-items", apiLimiter.Middleware(handler.JWTAuth(authUC, customItemH.HandleItems)))
+	mux.HandleFunc("/api/custom-items/", apiLimiter.Middleware(handler.JWTAuth(authUC, customItemH.HandleItem)))
+
+	// Public share endpoint
+	mux.HandleFunc("/api/share/", shareH.HandleSharedSheet)
+
 	// Projects + BOQ (JWT + rate limited)
 	mux.HandleFunc("/api/projects", apiLimiter.Middleware(handler.JWTAuth(authUC, projH.HandleProjects)))
 	mux.HandleFunc("/api/projects/", apiLimiter.Middleware(handler.JWTAuth(authUC, func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		switch {
+		case isGenerateSharePath(path):
+			projH.HandleGenerateShare(w, r)
 		case isExportPath(path):
 			parts := splitPath(path)
 			if parts[len(parts)-1] == "excel" {
@@ -112,6 +129,10 @@ func main() {
 			boqH.HandleBOQEntry(w, r)
 		case isBOQPath(path):
 			boqH.HandleBOQ(w, r)
+		case isProjectSheetPath(path):
+			projSheetH.HandleSheet(w, r)
+		case isProjectSheetsPath(path):
+			projSheetH.HandleSheets(w, r)
 		default:
 			projH.HandleProject(w, r)
 		}
@@ -146,6 +167,18 @@ func isBOQEntryPath(p string) bool {
 func isBOQPath(p string) bool {
 	parts := splitPath(p)
 	return len(parts) >= 4 && parts[3] == "boq"
+}
+func isProjectSheetPath(p string) bool {
+	parts := splitPath(p)
+	return len(parts) == 5 && parts[3] == "sheets"
+}
+func isProjectSheetsPath(p string) bool {
+	parts := splitPath(p)
+	return len(parts) >= 4 && parts[3] == "sheets"
+}
+func isGenerateSharePath(p string) bool {
+	parts := splitPath(p)
+	return len(parts) >= 4 && parts[3] == "share"
 }
 func splitPath(p string) []string {
 	var out []string

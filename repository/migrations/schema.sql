@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS projects (
     name        TEXT NOT NULL,
     client_name TEXT NOT NULL DEFAULT '',
     location    TEXT NOT NULL DEFAULT '',
+    share_token TEXT UNIQUE,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -31,10 +32,20 @@ CREATE TABLE IF NOT EXISTS dsr_items (
     rate        REAL NOT NULL DEFAULT 0
 );
 
--- BOQ entries per project
+-- Project Sheets table
+CREATE TABLE IF NOT EXISTS project_sheets (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL DEFAULT 'Main',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- BOQ entries per project sheet
 CREATE TABLE IF NOT EXISTS boq_entries (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    sheet_id    INTEGER REFERENCES project_sheets(id) ON DELETE CASCADE,
     item_no     INTEGER NOT NULL DEFAULT 1,
     dsr_item_id INTEGER REFERENCES dsr_items(id),
     description TEXT NOT NULL,
@@ -46,4 +57,15 @@ CREATE TABLE IF NOT EXISTS boq_entries (
     unit        TEXT NOT NULL DEFAULT 'CUM',
     rate        REAL NOT NULL DEFAULT 0,
     amount      REAL NOT NULL DEFAULT 0
+);
+
+-- Custom saved items library
+CREATE TABLE IF NOT EXISTS custom_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category    TEXT NOT NULL,
+    description TEXT NOT NULL,
+    unit        TEXT NOT NULL DEFAULT 'CUM',
+    rate        REAL NOT NULL DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );

@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Govind-619/xtmator/usecase"
@@ -50,7 +51,8 @@ func (h *ExportHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sheet, err := h.boq.GetSheet(projectID, userID)
+	sheetID, _ := strconv.ParseInt(r.URL.Query().Get("sheet_id"), 10, 64)
+	sheet, err := h.boq.GetSheet(projectID, sheetID, userID)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusNotFound)
 		return
@@ -298,7 +300,8 @@ func (h *ExportHandler) ExportExcel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sheet, err := h.boq.GetSheet(projectID, userID)
+	sheetID, _ := strconv.ParseInt(r.URL.Query().Get("sheet_id"), 10, 64)
+	sheet, err := h.boq.GetSheet(projectID, sheetID, userID)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusNotFound)
 		return

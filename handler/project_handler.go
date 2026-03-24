@@ -73,6 +73,31 @@ func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jsonOK(w, p)
+	case http.MethodPut:
+		var req struct {
+			Name       string  `json:"name"`
+			ClientName string  `json:"client_name"`
+			Location   string  `json:"location"`
+			CostIndex  float64 `json:"cost_index"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			jsonError(w, "invalid body", http.StatusBadRequest)
+			return
+		}
+		p, err := h.projects.Get(id, userID)
+		if err != nil || p == nil {
+			jsonError(w, "project not found", http.StatusNotFound)
+			return
+		}
+		p.Name = req.Name
+		p.ClientName = req.ClientName
+		p.Location = req.Location
+		p.CostIndex = req.CostIndex
+		if err := h.projects.Update(p); err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		jsonOK(w, p)
 	case http.MethodDelete:
 		if err := h.projects.Delete(id, userID); err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)
@@ -82,4 +107,25 @@ func (h *ProjectHandler) HandleProject(w http.ResponseWriter, r *http.Request) {
 	default:
 		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// HandleGenerateShare handles POST /api/projects/:id/share
+func (h *ProjectHandler) HandleGenerateShare(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		jsonError(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID := getUserID(r)
+	projectID := extractProjectID(r.URL.Path)
+	if projectID == 0 {
+		jsonError(w, "invalid project id", http.StatusBadRequest)
+		return
+	}
+
+	token, err := h.projects.GenerateShareToken(projectID, userID)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	jsonOK(w, map[string]string{"share_token": token})
 }

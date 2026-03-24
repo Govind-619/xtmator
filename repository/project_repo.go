@@ -12,6 +12,7 @@ type ProjectRepository interface {
 	Create(userID int64, name, clientName, location string) (*domain.Project, error)
 	ListByUser(userID int64) ([]domain.Project, error)
 	GetByID(id, userID int64) (*domain.Project, error)
+	GetByShareToken(token string) (*domain.Project, error)
 	Update(p *domain.Project) error
 	Delete(id, userID int64) error
 }
@@ -35,7 +36,7 @@ func (r *projectRepo) Create(userID int64, name, clientName, location string) (*
 
 func (r *projectRepo) ListByUser(userID int64) ([]domain.Project, error) {
 	rows, err := r.db.Query(
-		`SELECT id, user_id, name, client_name, location, created_at, updated_at
+		`SELECT id, user_id, name, client_name, location, cost_index, COALESCE(share_token, ''), created_at, updated_at
 		 FROM projects WHERE user_id = ? ORDER BY updated_at DESC`, userID,
 	)
 	if err != nil {
@@ -45,7 +46,7 @@ func (r *projectRepo) ListByUser(userID int64) ([]domain.Project, error) {
 	var list []domain.Project
 	for rows.Next() {
 		var p domain.Project
-		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.ClientName, &p.Location, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.ClientName, &p.Location, &p.CostIndex, &p.ShareToken, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, p)
@@ -56,9 +57,21 @@ func (r *projectRepo) ListByUser(userID int64) ([]domain.Project, error) {
 func (r *projectRepo) GetByID(id, userID int64) (*domain.Project, error) {
 	p := &domain.Project{}
 	err := r.db.QueryRow(
-		`SELECT id, user_id, name, client_name, location, created_at, updated_at
+		`SELECT id, user_id, name, client_name, location, cost_index, COALESCE(share_token, ''), created_at, updated_at
 		 FROM projects WHERE id = ? AND user_id = ?`, id, userID,
-	).Scan(&p.ID, &p.UserID, &p.Name, &p.ClientName, &p.Location, &p.CreatedAt, &p.UpdatedAt)
+	).Scan(&p.ID, &p.UserID, &p.Name, &p.ClientName, &p.Location, &p.CostIndex, &p.ShareToken, &p.CreatedAt, &p.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return p, err
+}
+
+func (r *projectRepo) GetByShareToken(token string) (*domain.Project, error) {
+	p := &domain.Project{}
+	err := r.db.QueryRow(
+		`SELECT id, user_id, name, client_name, location, cost_index, COALESCE(share_token, ''), created_at, updated_at
+		 FROM projects WHERE share_token = ?`, token,
+	).Scan(&p.ID, &p.UserID, &p.Name, &p.ClientName, &p.Location, &p.CostIndex, &p.ShareToken, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -67,9 +80,9 @@ func (r *projectRepo) GetByID(id, userID int64) (*domain.Project, error) {
 
 func (r *projectRepo) Update(p *domain.Project) error {
 	_, err := r.db.Exec(
-		`UPDATE projects SET name=?, client_name=?, location=?, updated_at=CURRENT_TIMESTAMP
+		`UPDATE projects SET name=?, client_name=?, location=?, cost_index=?, share_token=?, updated_at=CURRENT_TIMESTAMP
 		 WHERE id=? AND user_id=?`,
-		p.Name, p.ClientName, p.Location, p.ID, p.UserID,
+		p.Name, p.ClientName, p.Location, p.CostIndex, p.ShareToken, p.ID, p.UserID,
 	)
 	return err
 }

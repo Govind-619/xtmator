@@ -275,8 +275,10 @@ const spaHTML = `<!DOCTYPE html>
     }
 
     // ─── Sidebar ─────────────────────────────────────────────────────────────────
-    function Sidebar({ user, page, onNav, onLogout }) {
+    function Sidebar({ user, page, onNav, onLogout, projects, currentProject, onOpenProject }) {
       const initials = (user?.name||'U').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+      const recent = (projects || []).slice(0, 5);
+
       return (
         <div className="sidebar">
           <div className="sidebar-logo">
@@ -287,6 +289,17 @@ const spaHTML = `<!DOCTYPE html>
             <button id="nav-dashboard" className={'nav-item' + (page==='dashboard'?' active':'')} onClick={() => onNav('dashboard')}>
               🗂 Dashboard
             </button>
+            {recent.length > 0 && (
+              <div style={{ marginTop: 24, paddingLeft: 12, marginBottom: 8, fontSize: 11, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Recent Projects
+              </div>
+            )}
+            {recent.map(p => (
+              <button key={p.ID} className={'nav-item' + (page==='project' && currentProject?.ID === p.ID ? ' active' : '')} style={{ padding: '8px 12px', fontSize: 13, gap: 8 }} onClick={() => onOpenProject(p)}>
+                <span style={{ fontSize: 14 }}>📄</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.Name}</span>
+              </button>
+            ))}
           </div>
           <div className="sidebar-user">
             <div className="user-info">
@@ -305,21 +318,10 @@ const spaHTML = `<!DOCTYPE html>
     }
 
     // ─── Dashboard page ───────────────────────────────────────────────────────────
-    function Dashboard({ onOpenProject, showToast }) {
-      const [projects, setProjects] = useState([]);
-      const [loading, setLoading] = useState(true);
+    function Dashboard({ projects, loading, onRefresh, onOpenProject, showToast }) {
       const [showModal, setShowModal] = useState(false);
       const [form, setForm] = useState({ name:'', client_name:'', location:'' });
       const [saving, setSaving] = useState(false);
-
-      const load = useCallback(async () => {
-        setLoading(true);
-        try { setProjects(await api('GET', '/api/projects')); }
-        catch(e) { showToast(e.message, 'error'); }
-        finally { setLoading(false); }
-      }, []);
-
-      useEffect(() => { load(); }, [load]);
 
       const createProject = async (e) => {
         e.preventDefault(); setSaving(true);
@@ -328,6 +330,7 @@ const spaHTML = `<!DOCTYPE html>
           setShowModal(false);
           setForm({ name:'', client_name:'', location:'' });
           showToast('Project created!');
+          onRefresh();
           onOpenProject(p);
         } catch(err) { showToast(err.message, 'error'); }
         finally { setSaving(false); }
@@ -336,7 +339,7 @@ const spaHTML = `<!DOCTYPE html>
       const deleteProject = async (e, id) => {
         e.stopPropagation();
         if (!confirm('Delete this project and all its BOQ items?')) return;
-        try { await api('DELETE', '/api/projects/' + id); load(); showToast('Project deleted'); }
+        try { await api('DELETE', '/api/projects/' + id); onRefresh(); showToast('Project deleted'); }
         catch(err) { showToast(err.message, 'error'); }
       };
 
@@ -432,17 +435,20 @@ const spaHTML = `<!DOCTYPE html>
     }
 
 
-    function BOQEntryModal({ projectID, onSaved, onClose, showToast }) {
+    function BOQEntryModal({ projectID, sheetID, onSaved, onClose, showToast }) {
       const [categories, setCategories] = useState([]);
       const [items, setItems] = useState([]);
+      const [customItems, setCustomItems] = useState([]);
+      const [saveToLibrary, setSaveToLibrary] = useState(false);
       const [form, setForm] = useState({
-        dsr_item_id: '', category:'', description:'', length:'', breadth:'', height:'', manual_qty:'', manual_rate:''
+        dsr_item_id: '', category:'', description:'', length:'', breadth:'', height:'', manual_qty:'', manual_rate:'', manual_unit:'CUM', manual_category:''
       });
       const [preview, setPreview] = useState({ qty:0, amount:0 });
       const [saving, setSaving] = useState(false);
 
       useEffect(() => {
         api('GET', '/api/dsr/categories').then(setCategories).catch(() => {});
+        api('GET', '/api/custom-items').then(setCustomItems).catch(() => {});
       }, []);
 
       useEffect(() => {
@@ -453,7 +459,7 @@ const spaHTML = `<!DOCTYPE html>
 
       // Derive the active unit and dim-mode from selected DSR item (or manual)
       const selectedItem = items.find(i => String(i.ID) === form.dsr_item_id);
-      const activeUnit = selectedItem ? selectedItem.Unit : (form.category === '__custom__' ? 'CUM' : '');
+      const activeUnit = selectedItem ? selectedItem.Unit : (form.category === '__custom__' ? form.manual_unit : '');
       const dimMode = getDimMode(activeUnit);
 
       useEffect(() => {
@@ -482,9 +488,11 @@ const spaHTML = `<!DOCTYPE html>
       const submit = async (e) => {
         e.preventDefault(); setSaving(true);
         const body = {
+          sheet_id: sheetID,
           dsr_item_id: form.dsr_item_id ? parseInt(form.dsr_item_id) : null,
           description: form.description,
           category: form.category === '__custom__' ? (form.manual_category || 'Custom') : form.category,
+          unit: form.category === '__custom__' ? form.manual_unit : '',
           length: parseFloat(form.length)||0,
           breadth: parseFloat(form.breadth)||0,
           height: parseFloat(form.height)||0,
@@ -492,6 +500,14 @@ const spaHTML = `<!DOCTYPE html>
           manual_rate: parseFloat(form.manual_rate)||0,
         };
         try {
+          if (form.category === '__custom__' && saveToLibrary) {
+            await api('POST', '/api/custom-items', {
+              category: form.manual_category || 'Custom',
+              description: form.description,
+              unit: form.manual_unit,
+              rate: parseFloat(form.manual_rate) || 0
+            });
+          }
           await api('POST', '/api/projects/' + projectID + '/boq', body);
           showToast('Item added!'); onSaved();
         } catch(err) { showToast(err.message, 'error'); }
@@ -509,7 +525,7 @@ const spaHTML = `<!DOCTYPE html>
             </div>
             <form onSubmit={submit}>
               {/* Category + DSR item */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="label">Category *</label>
                   <select id="sel-category" className="select" value={form.category} onChange={set('category')} required>
@@ -527,11 +543,47 @@ const spaHTML = `<!DOCTYPE html>
                 </div>
               </div>
 
+              {form.category === '__custom__' && customItems.length > 0 && (
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label className="label">My Custom Library</label>
+                  <select className="select" onChange={e => {
+                      const sel = customItems.find(c => String(c.id) === e.target.value);
+                      if (sel) {
+                        setForm(f => ({...f, 
+                          description: sel.description, 
+                          manual_category: sel.category,
+                          manual_rate: sel.rate,
+                          manual_unit: sel.unit || 'CUM'
+                        }));
+                      }
+                  }}>
+                    <option value="">— Load saved item —</option>
+                    {customItems.map(c => <option key={c.id} value={c.id}>[{c.category}] {c.description} - ₹{c.rate}/{c.unit}</option>)}
+                  </select>
+                </div>
+              )}
+
               {/* Custom category name when manual */}
               {form.category === '__custom__' && (
-                <div className="form-group">
-                  <label className="label">Custom Category Name</label>
-                  <input className="input" placeholder="e.g. Miscellaneous" value={form.manual_category||''} onChange={e => setForm(f => ({...f, manual_category: e.target.value}))}/>
+                <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:12, marginBottom:16 }}>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Custom Category Name</label>
+                    <input className="input" placeholder="e.g. Miscellaneous" value={form.manual_category||''} onChange={e => setForm(f => ({...f, manual_category: e.target.value}))}/>
+                  </div>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Unit</label>
+                    <select className="select" value={form.manual_unit} onChange={set('manual_unit')}>
+                      <option value="CUM">CUM / M3</option>
+                      <option value="SQM">SQM / M2</option>
+                      <option value="M">M / RMT</option>
+                      <option value="KG">KG</option>
+                      <option value="MT">MT</option>
+                      <option value="NO.">NO.</option>
+                      <option value="LS">LS</option>
+                      <option value="DAY">DAY</option>
+                      <option value="MONTH">MONTH</option>
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -646,6 +698,12 @@ const spaHTML = `<!DOCTYPE html>
                 </div>
               )}
 
+              {form.category === '__custom__' && (
+                <div style={{ marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+                  <input type="checkbox" id="chk-save-lib" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} />
+                  <label htmlFor="chk-save-lib" style={{ fontSize:13, cursor:'pointer' }}>Save this custom item to my library for future use</label>
+                </div>
+              )}
               <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
                 <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
                 <button id="btn-add-item" type="submit" className="btn btn-primary" disabled={saving}>
@@ -662,15 +720,38 @@ const spaHTML = `<!DOCTYPE html>
     function ProjectSheet({ project, onBack, showToast }) {
       const [sheet, setSheet] = useState(null);
       const [loading, setLoading] = useState(true);
+      const [sheets, setSheets] = useState([]);
+      const [activeSheetID, setActiveSheetID] = useState(0);
+      const [loadingSheets, setLoadingSheets] = useState(true);
       const [showAdd, setShowAdd] = useState(false);
       const [exporting, setExporting] = useState(false);
+      const [costIndex, setCostIndex] = useState(project.CostIndex || 0);
+      const [editingRow, setEditingRow] = useState(null);
+      const [editForm, setEditForm] = useState({ length:'', breadth:'', height:'', manual_qty:'', manual_rate:'' });
+      const [savingEdit, setSavingEdit] = useState(false);
+      const [savingIndex, setSavingIndex] = useState(false);
+
+      const loadSheets = useCallback(async () => {
+        setLoadingSheets(true);
+        try {
+          const list = await api('GET', '/api/projects/' + project.ID + '/sheets');
+          setSheets(list);
+          if (list.length > 0 && activeSheetID === 0) {
+            setActiveSheetID(list[0].id);
+          }
+        } catch(e) { showToast(e.message, 'error'); }
+        finally { setLoadingSheets(false); }
+      }, [project.ID, activeSheetID]);
+
+      useEffect(() => { loadSheets(); }, [loadSheets]);
 
       const load = useCallback(async () => {
+        if (!activeSheetID) return;
         setLoading(true);
-        try { setSheet(await api('GET', '/api/projects/' + project.ID + '/boq')); }
+        try { setSheet(await api('GET', '/api/projects/' + project.ID + '/boq?sheet_id=' + activeSheetID)); }
         catch(e) { showToast(e.message, 'error'); }
         finally { setLoading(false); }
-      }, [project.ID]);
+      }, [project.ID, activeSheetID]);
 
       useEffect(() => { load(); }, [load]);
 
@@ -680,11 +761,27 @@ const spaHTML = `<!DOCTYPE html>
         catch(e) { showToast(e.message, 'error'); }
       };
 
+      const updateCostIndex = async () => {
+        setSavingIndex(true);
+        try {
+          await api('PUT', '/api/projects/' + project.ID, {
+            name: project.Name,
+            client_name: project.ClientName,
+            location: project.Location,
+            cost_index: parseFloat(costIndex) || 0
+          });
+          project.CostIndex = parseFloat(costIndex) || 0;
+          showToast('Cost Index applied!');
+          load();
+        } catch(e) { showToast(e.message, 'error'); }
+        finally { setSavingIndex(false); }
+      };
+
       const exportPDF = async () => {
         setExporting(true);
         try {
           const token = getToken();
-          const res = await fetch('/api/projects/' + project.ID + '/export/pdf', {
+          const res = await fetch('/api/projects/' + project.ID + '/export/pdf?sheet_id=' + activeSheetID, {
             headers: { 'Authorization': 'Bearer ' + token }
           });
           if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
@@ -698,11 +795,43 @@ const spaHTML = `<!DOCTYPE html>
         finally { setExporting(false); }
       };
 
+      const saveEdit = async (id) => {
+        setSavingEdit(true);
+        try {
+          await api('PUT', '/api/projects/' + project.ID + '/boq/' + id, {
+            length: parseFloat(editForm.length) || 0,
+            breadth: parseFloat(editForm.breadth) || 0,
+            height: parseFloat(editForm.height) || 0,
+            manual_qty: parseFloat(editForm.manual_qty) || 0,
+            manual_rate: parseFloat(editForm.manual_rate) || 0
+          });
+          setEditingRow(null);
+          load();
+          showToast('Item updated!');
+        } catch(e) { showToast(e.message, 'error'); }
+        finally { setSavingEdit(false); }
+      };
+
+      const startEdit = (item) => {
+        setEditingRow(item.ID);
+        const ratio = 1 + ((project.CostIndex || 0) / 100.0);
+        const rawRate = item.Rate / ratio;
+        setEditForm({
+          length: item.Length > 0 ? item.Length : '',
+          breadth: item.Breadth > 0 ? item.Breadth : '',
+          height: item.Height > 0 ? item.Height : '',
+          manual_qty: item.Quantity,
+          manual_rate: rawRate.toFixed(2)
+        });
+      };
+
+      const setEdit = k => e => setEditForm(f => ({ ...f, [k]: e.target.value }));
+
       const exportExcel = async () => {
         setExporting(true);
         try {
           const token = getToken();
-          const res = await fetch('/api/projects/' + project.ID + '/export/excel', {
+          const res = await fetch('/api/projects/' + project.ID + '/export/excel?sheet_id=' + activeSheetID, {
             headers: { 'Authorization': 'Bearer ' + token }
           });
           if (!res.ok) { const j = await res.json(); throw new Error(j.error); }
@@ -724,7 +853,26 @@ const spaHTML = `<!DOCTYPE html>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
               <button id="btn-back" className="btn btn-outline btn-sm" onClick={onBack}>← Back</button>
               <div>
-                <h2>{project.Name}</h2>
+                <div style={{ display:'flex', alignItems:'center', gap: 16 }}>
+                  <h2>{project.Name}</h2>
+                  <div style={{ display:'flex', alignItems:'center', background:'var(--surface2)', padding:'4px 8px', borderRadius:8, border:'1px solid var(--border)' }}>
+                    <span style={{ fontSize:12, fontWeight:600, color:'var(--text-muted)', marginRight:6 }}>INDEX:</span>
+                    <input 
+                      type="number" 
+                      style={{ width:60, background:'transparent', border:'none', color:'var(--accent)', fontWeight:700, outline:'none' }}
+                      value={costIndex}
+                      onChange={e => setCostIndex(e.target.value)}
+                      onBlur={() => {
+                        if (parseFloat(costIndex) !== (project.CostIndex || 0)) updateCostIndex();
+                      }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && parseFloat(costIndex) !== (project.CostIndex || 0)) updateCostIndex();
+                      }}
+                    />
+                    <span style={{ fontSize:14, fontWeight:700, color:'var(--text-muted)' }}>%</span>
+                    {savingIndex && <span className="spinner" style={{ width:12, height:12, marginLeft:8 }}/>}
+                  </div>
+                </div>
                 <p style={{ color:'var(--text-muted)', fontSize:13, marginTop:2 }}>
                   {project.ClientName && <span>👤 {project.ClientName}  </span>}
                   {project.Location && <span>📍 {project.Location}</span>}
@@ -732,6 +880,14 @@ const spaHTML = `<!DOCTYPE html>
               </div>
             </div>
             <div style={{ display:'flex', gap:10 }}>
+              <button id="btn-share" className="btn btn-outline" onClick={async () => {
+                try {
+                  const res = await api('POST', '/api/projects/' + project.ID + '/share');
+                  const url = window.location.origin + '/share/' + res.share_token;
+                  navigator.clipboard.writeText(url);
+                  showToast('🔗 Share link copied to clipboard!');
+                } catch(e) { showToast(e.message, 'error'); }
+              }}>🔗 Share</button>
               <button id="btn-export-pdf" className="btn btn-outline" onClick={exportPDF} disabled={exporting || !sheet?.entries?.length}>
                 {exporting ? <span className="spinner"/> : '↓ PDF'}
               </button>
@@ -740,6 +896,57 @@ const spaHTML = `<!DOCTYPE html>
               </button>
               <button id="btn-add-item" className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Item</button>
             </div>
+          </div>
+
+          {/* Sheets Tab Bar */}
+          <div style={{ display:'flex', gap:8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
+            {!loadingSheets && sheets.map(s => {
+              const isActive = activeSheetID === s.id;
+              return (
+              <div key={s.id} className={isActive ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'} style={{ borderRadius: '16px', padding: isActive ? '0' : '5px 12px', display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}>
+                <div style={{ padding: '5px 12px', cursor: 'pointer', flex: 1, display: 'flex', alignItems: 'center' }} onClick={() => setActiveSheetID(s.id)}>
+                  {s.name}
+                </div>
+                {isActive && (
+                  <div style={{ display: 'flex', background: 'rgba(0,0,0,0.1)' }}>
+                    <button style={{ background:'transparent', border:'none', color:'#fff', padding:'0 6px', cursor:'pointer' }} title="Rename Sheet" onClick={async (e) => {
+                      e.stopPropagation();
+                      const name = prompt("Enter new name for sheet:", s.name);
+                      if (!name || name === s.name) return;
+                      try {
+                        const res = await api('PUT', '/api/projects/' + project.ID + '/sheets/' + s.id, { name });
+                        setSheets(prev => prev.map(x => x.id === s.id ? res : x));
+                        showToast('Sheet renamed!');
+                      } catch(err) { showToast(err.message, 'error'); }
+                    }}>✎</button>
+                    {sheets.length > 1 && (
+                      <button style={{ background:'transparent', border:'none', color:'#fff', padding:'0 8px 0 6px', cursor:'pointer' }} title="Delete Sheet" onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!confirm("Delete sheet '" + s.name + "' and ALL its entries? This cannot be undone.")) return;
+                        try {
+                          await api('DELETE', '/api/projects/' + project.ID + '/sheets/' + s.id);
+                          const remain = sheets.filter(x => x.id !== s.id);
+                          setSheets(remain);
+                          setActiveSheetID(remain[0].id);
+                          showToast('Sheet deleted!');
+                        } catch(err) { showToast(err.message, 'error'); }
+                      }}>✕</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )})}
+            <button className="btn btn-outline btn-sm" style={{ borderRadius: '16px', borderStyle: 'dashed' }} onClick={async () => {
+              const name = prompt('New sheet name:');
+              if (name) {
+                try {
+                  const s = await api('POST', '/api/projects/' + project.ID + '/sheets', { name });
+                  setSheets(prev => [...prev, s]);
+                  setActiveSheetID(s.id);
+                  showToast('Sheet created!');
+                } catch(e) { showToast(e.message, 'error'); }
+              }
+            }}>+ New Sheet</button>
           </div>
 
           <div className="card" style={{ padding:0, overflow:'hidden' }}>
@@ -788,25 +995,50 @@ const spaHTML = `<!DOCTYPE html>
                           lastCat = e.Category;
                         }
 
-                        rows.push(
-                          <tr key={e.ID}>
-                            <td className="text-center" style={{ color:'var(--text-muted)' }}>{sr++}</td>
-                            <td style={{ maxWidth:260 }}>
-                              <div style={{ fontWeight:500 }}>{e.Description}</div>
-                            </td>
-                            <td><span className="badge badge-blue">{e.Category}</span></td>
-                            <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Length>0?e.Length.toFixed(2):'—'}</td>
-                            <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Breadth>0?e.Breadth.toFixed(2):'—'}</td>
-                            <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Height>0?e.Height.toFixed(2):'—'}</td>
-                            <td className="text-center"><span className="tag">{e.Unit}</span></td>
-                            <td className="text-right amount-cell" style={{ fontVariantNumeric:'tabular-nums' }}>{e.Quantity.toFixed(3)}</td>
-                            <td className="text-right" style={{ fontVariantNumeric:'tabular-nums' }}>{fmt(e.Rate)}</td>
-                            <td className="text-right amount-cell" style={{ color:'var(--accent)', fontVariantNumeric:'tabular-nums' }}>{fmt(e.Amount)}</td>
-                            <td className="text-center">
-                              <button className="btn btn-danger btn-sm" style={{ padding:'3px 7px' }} onClick={() => deleteEntry(e.ID)}>×</button>
-                            </td>
-                          </tr>
-                        );
+                        const editMode = editingRow === e.ID;
+                        if (editMode) {
+                          rows.push(
+                            <tr key={e.ID} style={{ background:'rgba(59, 130, 246, 0.15)' }}>
+                              <td className="text-center" style={{ color:'var(--text-muted)' }}>{sr++}</td>
+                              <td style={{ maxWidth:260 }}>
+                                <div style={{ fontWeight:500 }}>{e.Description}</div>
+                              </td>
+                              <td><span className="badge badge-blue">{e.Category}</span></td>
+                              <td className="text-right"><input type="number" step="0.001" className="input" style={{ width:66, padding:'4px', textAlign:'right' }} value={editForm.length} onChange={setEdit('length')} /></td>
+                              <td className="text-right"><input type="number" step="0.001" className="input" style={{ width:66, padding:'4px', textAlign:'right' }} value={editForm.breadth} onChange={setEdit('breadth')} /></td>
+                              <td className="text-right"><input type="number" step="0.001" className="input" style={{ width:66, padding:'4px', textAlign:'right' }} value={editForm.height} onChange={setEdit('height')} /></td>
+                              <td className="text-center"><span className="tag">{e.Unit}</span></td>
+                              <td className="text-right"><input type="number" step="0.001" className="input" style={{ width:76, padding:'4px', textAlign:'right' }} value={editForm.manual_qty} onChange={setEdit('manual_qty')} /></td>
+                              <td className="text-right"><input type="number" step="0.01" className="input" style={{ width:86, padding:'4px', textAlign:'right' }} value={editForm.manual_rate} onChange={setEdit('manual_rate')} title="Base Rate (before index)" /></td>
+                              <td className="text-right amount-cell" style={{ color:'var(--text-muted)' }}>—</td>
+                              <td className="text-center" style={{ display:'flex', gap:4, justifyContent:'center' }}>
+                                <button className="btn btn-primary btn-sm" style={{ padding:'3px' }} onClick={() => saveEdit(e.ID)} disabled={savingEdit}>✓</button>
+                                <button className="btn btn-outline btn-sm" style={{ padding:'3px' }} onClick={() => setEditingRow(null)}>✕</button>
+                              </td>
+                            </tr>
+                          );
+                        } else {
+                          rows.push(
+                            <tr key={e.ID} onDoubleClick={() => startEdit(e)}>
+                              <td className="text-center" style={{ color:'var(--text-muted)' }}>{sr++}</td>
+                              <td style={{ maxWidth:260 }}>
+                                <div style={{ fontWeight:500 }}>{e.Description}</div>
+                              </td>
+                              <td><span className="badge badge-blue">{e.Category}</span></td>
+                              <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums', cursor:'pointer' }} onClick={() => startEdit(e)}>{e.Length>0?e.Length.toFixed(2):'—'}</td>
+                              <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums', cursor:'pointer' }} onClick={() => startEdit(e)}>{e.Breadth>0?e.Breadth.toFixed(2):'—'}</td>
+                              <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums', cursor:'pointer' }} onClick={() => startEdit(e)}>{e.Height>0?e.Height.toFixed(2):'—'}</td>
+                              <td className="text-center"><span className="tag">{e.Unit}</span></td>
+                              <td className="text-right amount-cell" style={{ cursor:'pointer' }} onClick={() => startEdit(e)}>{e.Quantity.toFixed(3)}</td>
+                              <td className="text-right" style={{ cursor:'pointer' }} onClick={() => startEdit(e)}>{fmt(e.Rate)}</td>
+                              <td className="text-right amount-cell" style={{ color:'var(--accent)', fontVariantNumeric:'tabular-nums' }}>{fmt(e.Amount)}</td>
+                              <td className="text-center" style={{ display:'flex', gap:4, justifyContent:'center' }}>
+                                <button className="btn btn-outline btn-sm" style={{ padding:'2px 6px' }} title="Edit inline" onClick={() => startEdit(e)}>✎</button>
+                                <button className="btn btn-danger btn-sm" style={{ padding:'2px 6px' }} title="Remove" onClick={() => deleteEntry(e.ID)}>✕</button>
+                              </td>
+                            </tr>
+                          );
+                        }
                       });
                       return rows;
                     })()}
@@ -824,6 +1056,7 @@ const spaHTML = `<!DOCTYPE html>
           {showAdd && (
             <BOQEntryModal
               projectID={project.ID}
+              sheetID={activeSheetID}
               showToast={showToast}
               onClose={() => setShowAdd(false)}
               onSaved={() => { setShowAdd(false); load(); }}
@@ -833,8 +1066,83 @@ const spaHTML = `<!DOCTYPE html>
       );
     }
 
+    // ─── Public Share View ────────────────────────────────────────────────────────
+    function ShareView({ token, showToast }) {
+      const [sheet, setSheet] = useState(null);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        api('GET', '/api/share/' + token)
+          .then(setSheet)
+          .catch(e => showToast(e.message, 'error'))
+          .finally(() => setLoading(false));
+      }, [token]);
+
+      const fmt = (n) => (n||0).toLocaleString('en-IN', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+      if (loading) return <div style={{ padding:60, textAlign:'center' }}><span className="spinner"/></div>;
+      if (!sheet) return <div style={{ padding:60, textAlign:'center' }}>View Not Found.</div>;
+
+      let sr = 1;
+      return (
+        <div style={{ maxWidth: 1000, margin: '40px auto', padding: 20 }}>
+          <div className="card" style={{ padding: 24, marginBottom: 20, textAlign: 'center' }}>
+            <h2 style={{ margin:0, marginBottom:8 }}>{sheet.project.Name}</h2>
+            <p style={{ margin:0, color:'var(--text-muted)' }}>
+              {sheet.project.ClientName && <span>👤 Client: {sheet.project.ClientName} &bull; </span>}
+              📍 Location: {sheet.project.Location}
+            </p>
+          </div>
+          <div className="card" style={{ overflowX: 'auto', padding: 0 }}>
+            <table className="table" style={{ width: '100%', minWidth: 800 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 50, textAlign:'center' }}>Sr</th>
+                  <th>Description</th>
+                  <th>Category</th>
+                  <th className="text-right">L</th>
+                  <th className="text-right">B</th>
+                  <th className="text-right">H</th>
+                  <th className="text-center">Unit</th>
+                  <th className="text-right">Qty</th>
+                  <th className="text-right">Rate</th>
+                  <th className="text-right" style={{ paddingRight:16 }}>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sheet.entries?.map(e => (
+                  <tr key={e.ID}>
+                    <td className="text-center" style={{ color: 'var(--text-muted)' }}>{sr++}</td>
+                    <td><div style={{ fontWeight: 500 }}>{e.Description}</div></td>
+                    <td><span className="badge badge-blue">{e.Category}</span></td>
+                    <td className="text-right" style={{ color: 'var(--text-muted)' }}>{e.Length > 0 ? e.Length.toFixed(2) : '-'}</td>
+                    <td className="text-right" style={{ color: 'var(--text-muted)' }}>{e.Breadth > 0 ? e.Breadth.toFixed(2) : '-'}</td>
+                    <td className="text-right" style={{ color: 'var(--text-muted)' }}>{e.Height > 0 ? e.Height.toFixed(2) : '-'}</td>
+                    <td className="text-center"><span className="tag">{e.Unit}</span></td>
+                    <td className="text-right amount-cell">{e.Quantity.toFixed(3)}</td>
+                    <td className="text-right">{fmt(e.Rate)}</td>
+                    <td className="text-right amount-cell" style={{ color: 'var(--accent)' }}>{fmt(e.Amount)}</td>
+                  </tr>
+                ))}
+                {!sheet.entries?.length && (
+                  <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>This project is empty.</td></tr>
+                )}
+                <tr className="grand-total-row">
+                  <td colSpan={9} style={{ textAlign: 'right', paddingRight: 16 }}>GRAND TOTAL</td>
+                  <td className="text-right amount-cell" style={{ fontSize: 16 }}>₹{fmt(sheet.grand_total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
     // ─── App Root ─────────────────────────────────────────────────────────────────
     function App() {
+      const p = window.location.pathname;
+      const [toastEl, showToast] = useToast();
+
       const [user, setUser] = useState(() => {
         // Handle Google OAuth callback: pick up ?token= from URL
         const params = new URLSearchParams(window.location.search);
@@ -855,7 +1163,20 @@ const spaHTML = `<!DOCTYPE html>
       });
       const [page, setPage] = useState('dashboard');
       const [currentProject, setCurrentProject] = useState(null);
-      const [toastEl, showToast] = useToast();
+      const [projects, setProjects] = useState([]);
+      const [projectsLoading, setProjectsLoading] = useState(false);
+
+      const loadProjects = useCallback(async () => {
+        if (!getToken()) return;
+        setProjectsLoading(true);
+        try { setProjects(await api('GET', '/api/projects') || []); }
+        catch(e) { console.error('Failed to load projects', e); }
+        finally { setProjectsLoading(false); }
+      }, []);
+
+      useEffect(() => {
+        if (user && !p.startsWith('/share/')) loadProjects();
+      }, [user, loadProjects, p]);
 
       const login = (u) => { setUser(u); setPage('dashboard'); };
       const logout = () => {
@@ -866,13 +1187,18 @@ const spaHTML = `<!DOCTYPE html>
       const openProject = (p) => { setCurrentProject(p); setPage('project'); };
       const backToDash = () => { setCurrentProject(null); setPage('dashboard'); };
 
+      if (p.startsWith('/share/')) {
+        const token = p.split('/share/')[1];
+        return <><ShareView token={token} showToast={showToast} />{toastEl}</>;
+      }
+
       if (!user) return <><AuthPage onLogin={login}/>{toastEl}</>;
 
       return (
         <>
-          <Sidebar user={user} page={page} onNav={setPage} onLogout={logout}/>
+          <Sidebar user={user} page={page} onNav={setPage} onLogout={logout} projects={projects} currentProject={currentProject} onOpenProject={openProject} />
           <div className="main-content">
-            {page === 'dashboard' && <Dashboard onOpenProject={openProject} showToast={showToast}/>}
+            {page === 'dashboard' && <Dashboard projects={projects} loading={projectsLoading} onRefresh={loadProjects} onOpenProject={openProject} showToast={showToast}/>}
             {page === 'project' && currentProject && <ProjectSheet project={currentProject} onBack={backToDash} showToast={showToast}/>}
           </div>
           {toastEl}

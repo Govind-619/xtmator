@@ -21,10 +21,11 @@ type BOQUsecase struct {
 	boq      repository.BOQRepository
 	dsr      repository.DSRRepository
 	projects repository.ProjectRepository
+	sheets   repository.ProjectSheetRepository
 }
 
-func NewBOQUsecase(boq repository.BOQRepository, dsr repository.DSRRepository, projects repository.ProjectRepository) *BOQUsecase {
-	return &BOQUsecase{boq: boq, dsr: dsr, projects: projects}
+func NewBOQUsecase(boq repository.BOQRepository, dsr repository.DSRRepository, projects repository.ProjectRepository, sheets repository.ProjectSheetRepository) *BOQUsecase {
+	return &BOQUsecase{boq: boq, dsr: dsr, projects: projects, sheets: sheets}
 }
 
 // dimMode returns how many dimensions are meaningful for calculating quantity.
@@ -55,16 +56,22 @@ func dimMode(unit string) string {
 //
 // Rate comes from the DSR catalogue unless manualRate > 0.
 func (u *BOQUsecase) AddItem(
-	projectID int64,
+	projectID, sheetID int64,
 	dsrItemID *int64,
-	description, category string,
+	description, category, unit string,
 	l, b, h float64,
 	manualQty, manualRate float64,
 ) (*domain.BOQEntry, error) {
 
 	// Resolve DSR item (rate, unit, description)
 	rate := manualRate
-	unit := ""
+
+	if sheetID == 0 {
+		sheets, err := u.sheets.ListByProject(projectID)
+		if err == nil && len(sheets) > 0 {
+			sheetID = sheets[0].ID
+		}
+	}
 
 	if dsrItemID != nil {
 		item, err := u.dsr.GetByID(*dsrItemID)
@@ -118,7 +125,8 @@ func (u *BOQUsecase) AddItem(
 
 	entry := &domain.BOQEntry{
 		ProjectID:   projectID,
-		ItemNo:      u.boq.NextItemNo(projectID),
+		SheetID:     sheetID,
+		ItemNo:      u.boq.NextItemNo(projectID, sheetID),
 		DSRItemID:   dsrItemID,
 		Description: description,
 		Category:    category,
@@ -134,7 +142,7 @@ func (u *BOQUsecase) AddItem(
 }
 
 // GetSheet returns the full BOQ sheet and grand total for a project.
-func (u *BOQUsecase) GetSheet(projectID, userID int64) (*BOQSheet, error) {
+func (u *BOQUsecase) GetSheet(projectID, sheetID, userID int64) (*BOQSheet, error) {
 	project, err := u.projects.GetByID(projectID, userID)
 	if err != nil {
 		return nil, err
@@ -142,15 +150,89 @@ func (u *BOQUsecase) GetSheet(projectID, userID int64) (*BOQSheet, error) {
 	if project == nil {
 		return nil, errors.New("project not found")
 	}
-	entries, err := u.boq.ListByProject(projectID)
+	
+	if sheetID == 0 {
+		sheets, err := u.sheets.ListByProject(projectID)
+		if err == nil && len(sheets) > 0 {
+			sheetID = sheets[0].ID
+		}
+	}
+
+	entries, err := u.boq.ListByProject(projectID, sheetID)
 	if err != nil {
 		return nil, err
 	}
 	var total float64
-	for _, e := range entries {
-		total += e.Amount
+	ratio := 1.0 + (project.CostIndex / 100.0)
+
+	for i := range entries {
+		entries[i].Rate = entries[i].Rate * ratio
+		entries[i].Amount = entries[i].Quantity * entries[i].Rate
+		total += entries[i].Amount
+	}
+
+	return &BOQSheet{Project: project, Entries: entries, GrandTotal: total}, nil
+}
+
+// GetSharedSheet returns the full BOQ sheet and grand total using a public token.
+func (u *BOQUsecase) GetSharedSheet(token string, sheetID int64) (*BOQSheet, error) {
+	project, err := u.projects.GetByShareToken(token)
+	if err != nil { return nil, err }
+	if project == nil { return nil, errors.New("invalid share token") }
+
+	if sheetID == 0 {
+		sheets, err := u.sheets.ListByProject(project.ID)
+		if err == nil && len(sheets) > 0 { sheetID = sheets[0].ID }
+	}
+
+	entries, err := u.boq.ListByProject(project.ID, sheetID)
+	if err != nil { return nil, err }
+
+	var total float64
+	ratio := 1.0 + (project.CostIndex / 100.0)
+
+	for i := range entries {
+		entries[i].Rate = entries[i].Rate * ratio
+		entries[i].Amount = entries[i].Quantity * entries[i].Rate
+		total += entries[i].Amount
 	}
 	return &BOQSheet{Project: project, Entries: entries, GrandTotal: total}, nil
+}
+
+// UpdateItem updates the dimensions and rate of a single preexisting entry
+func (u *BOQUsecase) UpdateItem(projectID, entryID int64, l, b, h, manualQty, manualRate float64) (*domain.BOQEntry, error) {
+	entry, err := u.boq.GetEntry(entryID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if entry == nil {
+		return nil, errors.New("entry not found")
+	}
+
+	var qty float64
+	switch dimMode(entry.Unit) {
+	case "3d":
+		if l > 0 && b > 0 && h > 0 { qty = l * b * h }
+	case "2d":
+		if l > 0 && b > 0 { qty = l * b }
+	case "1d":
+		if l > 0 { qty = l }
+	}
+	if qty <= 0 { qty = manualQty }
+	if qty <= 0 { return nil, errors.New("quantity must be greater than zero") }
+
+	rate := manualRate
+	if rate <= 0 { rate = entry.Rate }
+
+	entry.Length = l
+	entry.Breadth = b
+	entry.Height = h
+	entry.Quantity = qty
+	entry.Rate = rate
+	entry.Amount = qty * rate
+
+	err = u.boq.UpdateEntry(entry)
+	return entry, err
 }
 
 // DeleteItem removes a BOQ entry from a project.

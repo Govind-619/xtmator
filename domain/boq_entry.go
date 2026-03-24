@@ -4,6 +4,7 @@ package domain
 type BOQEntry struct {
 	ID          int64
 	ProjectID   int64
+	SheetID     int64
 	ItemNo      int
 	DSRItemID   *int64  // nil for custom/manual entries
 	DSRItemCode string
