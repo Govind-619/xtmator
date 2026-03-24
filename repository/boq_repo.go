@@ -47,9 +47,11 @@ func (r *boqRepo) AddEntry(e *domain.BOQEntry) (*domain.BOQEntry, error) {
 
 func (r *boqRepo) ListByProject(projectID int64) ([]domain.BOQEntry, error) {
 	rows, err := r.db.Query(
-		`SELECT id, project_id, item_no, dsr_item_id, description, category,
-		        length, breadth, height, quantity, unit, rate, amount
-		 FROM boq_entries WHERE project_id = ? ORDER BY item_no`, projectID,
+		`SELECT b.id, b.project_id, b.item_no, b.dsr_item_id, b.description, b.category,
+		        b.length, b.breadth, b.height, b.quantity, b.unit, b.rate, b.amount, COALESCE(d.code, '')
+		 FROM boq_entries b
+		 LEFT JOIN dsr_items d ON b.dsr_item_id = d.id
+		 WHERE b.project_id = ? ORDER BY b.category ASC, b.item_no ASC`, projectID,
 	)
 	if err != nil {
 		return nil, err
@@ -60,7 +62,7 @@ func (r *boqRepo) ListByProject(projectID int64) ([]domain.BOQEntry, error) {
 		var e domain.BOQEntry
 		if err := rows.Scan(
 			&e.ID, &e.ProjectID, &e.ItemNo, &e.DSRItemID, &e.Description, &e.Category,
-			&e.Length, &e.Breadth, &e.Height, &e.Quantity, &e.Unit, &e.Rate, &e.Amount,
+			&e.Length, &e.Breadth, &e.Height, &e.Quantity, &e.Unit, &e.Rate, &e.Amount, &e.DSRItemCode,
 		); err != nil {
 			return nil, err
 		}

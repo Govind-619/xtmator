@@ -108,7 +108,7 @@ func (a *AuthUsecase) issueToken(user *domain.User) (string, *domain.User, error
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":  user.ID,
 		"name": user.Name,
-		"exp":  time.Now().Add(24 * time.Hour).Unix(),
+		"exp":  time.Now().Add(4 * time.Hour).Unix(),
 	})
 	signed, err := tok.SignedString(a.secret)
 	if err != nil {
@@ -209,4 +209,9 @@ func checkPasswordStrength(password string) error {
 		return errors.New("password must contain at least one uppercase letter, one lowercase letter, and one number")
 	}
 	return nil
+}
+
+// GetUser retrieves a user by their ID
+func (a *AuthUsecase) GetUser(id int64) (*domain.User, error) {
+	return a.users.FindByID(id)
 }

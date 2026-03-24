@@ -414,6 +414,24 @@ const spaHTML = `<!DOCTYPE html>
     }
 
     // ─── BOQ Entry Form Modal ─────────────────────────────────────────────────────
+    // dimMode: determines which dimension inputs to show based on unit
+    function getDimMode(unit) {
+      const u = (unit||'').toUpperCase().trim();
+      if (u === 'CUM' || u === 'M3') return '3d';
+      if (u === 'SQM' || u === 'SQM.' || u === 'M2') return '2d';
+      if (u === 'M' || u === 'RMT') return '1d';
+      return '0d'; // KG, MT, NO., LS, DAY, HR, MONTH etc.
+    }
+
+    // Human-readable hint for each dim mode
+    function dimHint(unit, mode) {
+      if (mode === '3d') return 'Enter L \u00d7 B \u00d7 H to auto-calculate Qty in ' + unit;
+      if (mode === '2d') return 'Enter L \u00d7 B to auto-calculate Qty in ' + unit;
+      if (mode === '1d') return 'Enter Length to auto-calculate Qty in ' + unit;
+      return 'Enter Quantity directly in ' + unit;
+    }
+
+
     function BOQEntryModal({ projectID, onSaved, onClose, showToast }) {
       const [categories, setCategories] = useState([]);
       const [items, setItems] = useState([]);
@@ -433,21 +451,29 @@ const spaHTML = `<!DOCTYPE html>
           .then(setItems).catch(() => {});
       }, [form.category]);
 
+      // Derive the active unit and dim-mode from selected DSR item (or manual)
+      const selectedItem = items.find(i => String(i.ID) === form.dsr_item_id);
+      const activeUnit = selectedItem ? selectedItem.Unit : (form.category === '__custom__' ? 'CUM' : '');
+      const dimMode = getDimMode(activeUnit);
+
       useEffect(() => {
         const l = parseFloat(form.length)||0, b = parseFloat(form.breadth)||0, h = parseFloat(form.height)||0;
         const mq = parseFloat(form.manual_qty)||0;
-        const qty = l>0 && b>0 && h>0 ? parseFloat((l*b*h).toFixed(3)) : mq;
-        const selectedItem = items.find(i => String(i.ID) === form.dsr_item_id);
+        let qty = 0;
+        if (dimMode === '3d' && l > 0 && b > 0 && h > 0) qty = parseFloat((l*b*h).toFixed(4));
+        else if (dimMode === '2d' && l > 0 && b > 0) qty = parseFloat((l*b).toFixed(4));
+        else if (dimMode === '1d' && l > 0) qty = parseFloat(l.toFixed(4));
+        if (qty === 0) qty = mq;
         const rate = parseFloat(form.manual_rate) || (selectedItem?.Rate||0);
         setPreview({ qty, amount: parseFloat((qty * rate).toFixed(2)) });
-      }, [form, items]);
+      }, [form, selectedItem, dimMode]);
 
       const set = k => e => {
         const v = e.target.value;
         const updated = { ...form, [k]: v };
         if (k === 'dsr_item_id') {
           const sel = items.find(i => String(i.ID) === v);
-          if (sel) { updated.description = sel.Description; updated.manual_rate = ''; }
+          if (sel) { updated.description = '[' + sel.Code + '] ' + sel.Description; updated.manual_rate = ''; }
         }
         if (k === 'category') { updated.dsr_item_id = ''; updated.description = ''; }
         setForm(updated);
@@ -458,7 +484,7 @@ const spaHTML = `<!DOCTYPE html>
         const body = {
           dsr_item_id: form.dsr_item_id ? parseInt(form.dsr_item_id) : null,
           description: form.description,
-          category: form.category,
+          category: form.category === '__custom__' ? (form.manual_category || 'Custom') : form.category,
           length: parseFloat(form.length)||0,
           breadth: parseFloat(form.breadth)||0,
           height: parseFloat(form.height)||0,
@@ -472,18 +498,19 @@ const spaHTML = `<!DOCTYPE html>
         finally { setSaving(false); }
       };
 
-      const selectedItem = items.find(i => String(i.ID) === form.dsr_item_id);
+      const unitLabel = activeUnit || '—';
 
       return (
         <div className="modal-overlay" onClick={e => e.target===e.currentTarget && onClose()}>
-          <div className="modal" style={{ maxWidth:600 }}>
+          <div className="modal" style={{ maxWidth:640 }}>
             <div className="modal-header">
               <h3>Add BOQ Item</h3>
               <button className="close-btn" onClick={onClose}>×</button>
             </div>
             <form onSubmit={submit}>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                <div className="form-group">
+              {/* Category + DSR item */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="label">Category *</label>
                   <select id="sel-category" className="select" value={form.category} onChange={set('category')} required>
                     <option value="">— Select category —</option>
@@ -491,8 +518,8 @@ const spaHTML = `<!DOCTYPE html>
                     <option value="__custom__">Custom / Manual</option>
                   </select>
                 </div>
-                <div className="form-group">
-                  <label className="label">DSR Work Item</label>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="label">DSR Work Item (Check DSOR)</label>
                   <select id="sel-dsr-item" className="select" value={form.dsr_item_id} onChange={set('dsr_item_id')} disabled={!form.category || form.category==='__custom__'}>
                     <option value="">— Select work item —</option>
                     {items.map(i => <option key={i.ID} value={i.ID}>[{i.Code}] {i.Description} — ₹{i.Rate.toLocaleString('en-IN')}/{i.Unit}</option>)}
@@ -500,54 +527,121 @@ const spaHTML = `<!DOCTYPE html>
                 </div>
               </div>
 
+              {/* Custom category name when manual */}
+              {form.category === '__custom__' && (
+                <div className="form-group">
+                  <label className="label">Custom Category Name</label>
+                  <input className="input" placeholder="e.g. Miscellaneous" value={form.manual_category||''} onChange={e => setForm(f => ({...f, manual_category: e.target.value}))}/>
+                </div>
+              )}
+
+              {/* Description */}
               <div className="form-group">
                 <label className="label">Description *</label>
                 <input id="inp-desc" className="input" placeholder="Description of work item" value={form.description} onChange={set('description')} required/>
               </div>
 
+              {/* Selected item info bar */}
               {selectedItem && (
-                <div style={{ background:'var(--surface2)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13,display:'flex',gap:16 }}>
+                <div style={{ background:'var(--surface2)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, display:'flex', gap:16, alignItems:'center', flexWrap:'wrap' }}>
                   <span><span className="tag">{selectedItem.Code}</span></span>
                   <span style={{ color:'var(--text-muted)' }}>DSR Rate:</span>
                   <span style={{ color:'var(--accent)', fontWeight:600 }}>₹{selectedItem.Rate.toLocaleString('en-IN')} / {selectedItem.Unit}</span>
+                  <span className="badge badge-blue">{selectedItem.Unit}</span>
                 </div>
               )}
 
               <div className="divider"/>
-              <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:12 }}>
-                Enter L × B × H to auto-calculate Qty in CUM, or enter Qty manually below.
-              </p>
 
-              <div className="boq-form-grid" style={{ marginBottom:12 }}>
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label className="label">Length (m)</label>
-                  <input id="inp-length" className="input" type="number" step="0.001" placeholder="0.000" value={form.length} onChange={set('length')}/>
-                </div>
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label className="label">Breadth (m)</label>
-                  <input id="inp-breadth" className="input" type="number" step="0.001" placeholder="0.000" value={form.breadth} onChange={set('breadth')}/>
-                </div>
-                <div className="form-group" style={{ marginBottom:0 }}>
-                  <label className="label">Height / Depth (m)</label>
-                  <input id="inp-height" className="input" type="number" step="0.001" placeholder="0.000" value={form.height} onChange={set('height')}/>
-                </div>
-              </div>
+              {/* Hint text — context-sensitive */}
+              {activeUnit && (
+                <p style={{ fontSize:12, color:'var(--text-muted)', marginBottom:12 }}>
+                  {dimHint(unitLabel, dimMode)}
+                </p>
+              )}
 
+              {/* ── Dimension fields (shown based on unit) ── */}
+              {dimMode === '3d' && (
+                <div className="boq-form-grid" style={{ marginBottom:12 }}>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Length (m)</label>
+                    <input id="inp-length" className="input" type="number" step="0.001" placeholder="0.000" value={form.length} onChange={set('length')}/>
+                  </div>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Breadth (m)</label>
+                    <input id="inp-breadth" className="input" type="number" step="0.001" placeholder="0.000" value={form.breadth} onChange={set('breadth')}/>
+                  </div>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Height / Depth (m)</label>
+                    <input id="inp-height" className="input" type="number" step="0.001" placeholder="0.000" value={form.height} onChange={set('height')}/>
+                  </div>
+                </div>
+              )}
+
+              {dimMode === '2d' && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Length (m)</label>
+                    <input id="inp-length" className="input" type="number" step="0.001" placeholder="0.000" value={form.length} onChange={set('length')}/>
+                  </div>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Breadth (m)</label>
+                    <input id="inp-breadth" className="input" type="number" step="0.001" placeholder="0.000" value={form.breadth} onChange={set('breadth')}/>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', color:'var(--text-dim)', fontSize:12, paddingTop:20 }}>
+                    Height not needed for {unitLabel}
+                  </div>
+                </div>
+              )}
+
+              {dimMode === '1d' && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 2fr', gap:12, marginBottom:12 }}>
+                  <div className="form-group" style={{ marginBottom:0 }}>
+                    <label className="label">Length (m)</label>
+                    <input id="inp-length" className="input" type="number" step="0.001" placeholder="0.000" value={form.length} onChange={set('length')}/>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', color:'var(--text-dim)', fontSize:12, paddingTop:20 }}>
+                    Only length needed for {unitLabel} items
+                  </div>
+                </div>
+              )}
+
+              {/* Manual qty + rate override */}
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
                 <div className="form-group" style={{ marginBottom:0 }}>
-                  <label className="label">Manual Qty (CUM)</label>
-                  <input id="inp-manual-qty" className="input" type="number" step="0.001" placeholder="If not using L×B×H" value={form.manual_qty} onChange={set('manual_qty')}/>
+                  <label className="label">
+                    {dimMode === '0d' ? 'Quantity (' + (unitLabel || 'units') + ') *' : 'Manual Qty (' + (unitLabel || 'units') + ')'}
+                  </label>
+                  <input
+                    id="inp-manual-qty"
+                    className="input"
+                    type="number"
+                    step="0.001"
+                    placeholder={dimMode === '0d' ? 'Required' : 'Override if not using dimensions'}
+                    value={form.manual_qty}
+                    onChange={set('manual_qty')}
+                    required={dimMode === '0d'}
+                  />
                 </div>
                 <div className="form-group" style={{ marginBottom:0 }}>
-                  <label className="label">Rate Override (₹/CUM)</label>
-                  <input id="inp-manual-rate" className="input" type="number" step="0.01" placeholder={selectedItem ? String(selectedItem.Rate) : 'Enter rate'} value={form.manual_rate} onChange={set('manual_rate')}/>
+                  <label className="label">Rate Override (₹/{unitLabel || 'unit'})</label>
+                  <input
+                    id="inp-manual-rate"
+                    className="input"
+                    type="number"
+                    step="0.01"
+                    placeholder={selectedItem ? String(selectedItem.Rate) : 'Enter rate'}
+                    value={form.manual_rate}
+                    onChange={set('manual_rate')}
+                    required={!selectedItem}
+                  />
                 </div>
               </div>
 
               {/* Live preview */}
               {(preview.qty > 0) && (
                 <div style={{ background:'var(--accent-soft)', border:'1px solid var(--accent)', borderRadius:8, padding:'12px 16px', marginBottom:16, display:'flex', justifyContent:'space-between', fontSize:13 }}>
-                  <span>Qty: <strong>{preview.qty.toFixed(3)} CUM</strong></span>
+                  <span>Qty: <strong>{preview.qty.toFixed(3)} {unitLabel}</strong></span>
                   <span>Amount: <strong style={{ color:'var(--accent)' }}>₹{preview.amount.toLocaleString('en-IN', { minimumFractionDigits:2 })}</strong></span>
                 </div>
               )}
@@ -644,37 +738,59 @@ const spaHTML = `<!DOCTYPE html>
                     <tr>
                       <th style={{ width:40 }}>Sr.</th>
                       <th>Description of Work</th>
-                      <th style={{ width:90 }}>Category</th>
+                      <th style={{ width:110 }}>Category</th>
                       <th className="text-right" style={{ width:65 }}>L (m)</th>
                       <th className="text-right" style={{ width:65 }}>B (m)</th>
                       <th className="text-right" style={{ width:65 }}>H (m)</th>
-                      <th className="text-right" style={{ width:90 }}>Qty (CUM)</th>
+                      <th className="text-right" style={{ width:65 }}>Unit</th>
+                      <th className="text-right" style={{ width:90 }}>Quantity</th>
                       <th className="text-right" style={{ width:100 }}>Rate (₹)</th>
                       <th className="text-right" style={{ width:120 }}>Amount (₹)</th>
                       <th style={{ width:40 }}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sheet.entries.map(e => (
-                      <tr key={e.ID}>
-                        <td className="text-center" style={{ color:'var(--text-muted)' }}>{e.ItemNo}</td>
-                        <td style={{ maxWidth:280 }}>
-                          <div style={{ fontWeight:500 }}>{e.Description}</div>
-                        </td>
-                        <td><span className="badge badge-blue">{e.Category}</span></td>
-                        <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Length>0?e.Length.toFixed(2):'—'}</td>
-                        <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Breadth>0?e.Breadth.toFixed(2):'—'}</td>
-                        <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Height>0?e.Height.toFixed(2):'—'}</td>
-                        <td className="text-right amount-cell" style={{ fontVariantNumeric:'tabular-nums' }}>{e.Quantity.toFixed(3)}</td>
-                        <td className="text-right" style={{ fontVariantNumeric:'tabular-nums' }}>{fmt(e.Rate)}</td>
-                        <td className="text-right amount-cell" style={{ color:'var(--accent)', fontVariantNumeric:'tabular-nums' }}>{fmt(e.Amount)}</td>
-                        <td className="text-center">
-                          <button className="btn btn-danger btn-sm" style={{ padding:'3px 7px' }} onClick={() => deleteEntry(e.ID)}>×</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const rows = [];
+                      let lastCat = null;
+                      let sr = 1;
+
+                      sheet.entries.forEach(e => {
+                        if (e.Category !== lastCat) {
+                          rows.push(
+                            <tr key={'cat_' + e.Category} style={{ background: 'var(--surface2)' }}>
+                              <td colSpan={11} style={{ fontWeight: 700, color: 'var(--text)', paddingTop: 14, paddingBottom: 14 }}>
+                                Category: {e.Category}
+                              </td>
+                            </tr>
+                          );
+                          lastCat = e.Category;
+                        }
+
+                        rows.push(
+                          <tr key={e.ID}>
+                            <td className="text-center" style={{ color:'var(--text-muted)' }}>{sr++}</td>
+                            <td style={{ maxWidth:260 }}>
+                              <div style={{ fontWeight:500 }}>{e.Description}</div>
+                            </td>
+                            <td><span className="badge badge-blue">{e.Category}</span></td>
+                            <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Length>0?e.Length.toFixed(2):'—'}</td>
+                            <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Breadth>0?e.Breadth.toFixed(2):'—'}</td>
+                            <td className="text-right" style={{ color:'var(--text-muted)', fontVariantNumeric:'tabular-nums' }}>{e.Height>0?e.Height.toFixed(2):'—'}</td>
+                            <td className="text-center"><span className="tag">{e.Unit}</span></td>
+                            <td className="text-right amount-cell" style={{ fontVariantNumeric:'tabular-nums' }}>{e.Quantity.toFixed(3)}</td>
+                            <td className="text-right" style={{ fontVariantNumeric:'tabular-nums' }}>{fmt(e.Rate)}</td>
+                            <td className="text-right amount-cell" style={{ color:'var(--accent)', fontVariantNumeric:'tabular-nums' }}>{fmt(e.Amount)}</td>
+                            <td className="text-center">
+                              <button className="btn btn-danger btn-sm" style={{ padding:'3px 7px' }} onClick={() => deleteEntry(e.ID)}>×</button>
+                            </td>
+                          </tr>
+                        );
+                      });
+                      return rows;
+                    })()}
                     <tr className="grand-total-row">
-                      <td colSpan={8} style={{ textAlign:'right', paddingRight:16 }}>Grand Total</td>
+                      <td colSpan={9} style={{ textAlign:'right', paddingRight:16 }}>Grand Total</td>
                       <td className="text-right amount-cell">₹{fmt(sheet.grand_total)}</td>
                       <td></td>
                     </tr>

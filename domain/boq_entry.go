@@ -6,6 +6,7 @@ type BOQEntry struct {
 	ProjectID   int64
 	ItemNo      int
 	DSRItemID   *int64  // nil for custom/manual entries
+	DSRItemCode string
 	Description string
 	Category    string
 	Length      float64

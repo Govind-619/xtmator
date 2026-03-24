@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Govind-619/xtmator/domain"
 	"github.com/Govind-619/xtmator/repository"
@@ -26,9 +27,33 @@ func NewBOQUsecase(boq repository.BOQRepository, dsr repository.DSRRepository, p
 	return &BOQUsecase{boq: boq, dsr: dsr, projects: projects}
 }
 
+// dimMode returns how many dimensions are meaningful for calculating quantity.
+//
+//	"3d" → CUM / M3  (L × B × H)
+//	"2d" → SQM / M2  (L × B)
+//	"1d" → M / RMT   (L only)
+//	"0d" → everything else (KG, MT, NO., LS, DAY, HR …) — manual qty required
+func dimMode(unit string) string {
+	switch strings.ToUpper(strings.TrimSpace(unit)) {
+	case "CUM", "M3":
+		return "3d"
+	case "SQM", "SQM.", "M2":
+		return "2d"
+	case "M", "RMT":
+		return "1d"
+	default:
+		return "0d"
+	}
+}
+
 // AddItem adds one BOQ line item to a project.
-// If dsrItemID is provided, rate is fetched from the DSR catalogue (override if manualRate > 0).
-// Quantity = L × B × H if all three dims are > 0, otherwise manualQty is used.
+// Quantity is calculated based on the item's unit:
+//   - CUM/M3  → L × B × H
+//   - SQM/M2  → L × B
+//   - M/RMT   → L
+//   - others  → manualQty
+//
+// Rate comes from the DSR catalogue unless manualRate > 0.
 func (u *BOQUsecase) AddItem(
 	projectID int64,
 	dsrItemID *int64,
@@ -37,9 +62,10 @@ func (u *BOQUsecase) AddItem(
 	manualQty, manualRate float64,
 ) (*domain.BOQEntry, error) {
 
-	// Resolve rate
+	// Resolve DSR item (rate, unit, description)
 	rate := manualRate
-	unit := "CUM"
+	unit := ""
+
 	if dsrItemID != nil {
 		item, err := u.dsr.GetByID(*dsrItemID)
 		if err != nil {
@@ -56,20 +82,38 @@ func (u *BOQUsecase) AddItem(
 		}
 		unit = item.Unit
 		if rate == 0 {
-			rate = item.Rate // only use DSR rate if user didn't override
+			rate = item.Rate // use DSR rate only if user didn't override
 		}
+	}
+	if unit == "" {
+		unit = "CUM" // fallback for fully manual entries
 	}
 	if rate <= 0 {
 		return nil, errors.New("rate must be greater than zero")
 	}
 
-	// Resolve quantity
-	qty := manualQty
-	if l > 0 && b > 0 && h > 0 {
-		qty = l * b * h
+	// Resolve quantity based on unit type
+	var qty float64
+	switch dimMode(unit) {
+	case "3d":
+		if l > 0 && b > 0 && h > 0 {
+			qty = l * b * h
+		}
+	case "2d":
+		if l > 0 && b > 0 {
+			qty = l * b
+		}
+	case "1d":
+		if l > 0 {
+			qty = l
+		}
+	}
+	// Fall back to manual qty if dimension-based calc yielded nothing
+	if qty <= 0 {
+		qty = manualQty
 	}
 	if qty <= 0 {
-		return nil, errors.New("quantity must be greater than zero — provide L×B×H or a manual quantity")
+		return nil, errors.New("quantity must be greater than zero — provide dimensions or a manual quantity")
 	}
 
 	entry := &domain.BOQEntry{
