@@ -111,6 +111,13 @@ func main() {
 	// Public share endpoint
 	mux.HandleFunc("/api/share/", shareH.HandleSharedSheet)
 
+	// Public assets
+	mux.HandleFunc("/assets/logo_web.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Write(handler.LogoWebData)
+	})
+
 	// Projects + BOQ (JWT + rate limited)
 	mux.HandleFunc("/api/projects", apiLimiter.Middleware(handler.JWTAuth(authUC, projH.HandleProjects)))
 	mux.HandleFunc("/api/projects/", apiLimiter.Middleware(handler.JWTAuth(authUC, func(w http.ResponseWriter, r *http.Request) {

@@ -16,6 +16,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/consts/border"
+	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/consts/orientation"
 	"github.com/johnfercher/maroto/v2/pkg/core"
@@ -67,6 +68,7 @@ func (h *ExportHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 		WithLeftMargin(15).
 		WithRightMargin(15).
 		WithTopMargin(15).
+		WithBackgroundImage(LogoPdfData, extension.Png).
 		Build()
 
 	m := maroto.New(cfg)

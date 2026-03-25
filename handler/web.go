@@ -19,10 +19,10 @@ const spaHTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>XTMATOR — Construction BOQ System</title>
+  <title>᙭TᗰᗩTOᖇ — Construction BOQ System</title>
   <meta name="description" content="Professional Construction Estimation and Quantity Surveying System based on DSR rates"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Monoton&display=swap" rel="stylesheet"/>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -182,7 +182,7 @@ const spaHTML = `<!DOCTYPE html>
           <div style={{ width:'100%', maxWidth:420 }}>
             {/* Logo */}
             <div style={{ textAlign:'center', marginBottom:32 }}>
-              <h1 style={{ fontSize:32, fontWeight:800, background:'linear-gradient(135deg,#3b82f6,#60a5fa)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
+              <h1 style={{ fontFamily: "'Monoton', cursive", fontSize: 48, fontWeight: 'normal', background: 'linear-gradient(45deg, #00C2FF, #8E2DE2, #FF007F)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 16 }}>
                 XTMATOR
               </h1>
               <p style={{ color:'var(--text-muted)', fontSize:14, marginTop:6 }}>
@@ -281,9 +281,11 @@ const spaHTML = `<!DOCTYPE html>
 
       return (
         <div className="sidebar">
-          <div className="sidebar-logo">
-            <h1>XTMATOR</h1>
-            <p>BOQ Estimation System</p>
+          <div className="sidebar-logo" style={{ textAlign: 'center', padding: '24px 0 16px' }}>
+            <h1 style={{ fontFamily: "'Monoton', cursive", background: 'linear-gradient(45deg, #00C2FF, #8E2DE2, #FF007F)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontSize: 32, margin: '0 0 8px 0', fontWeight: 'normal' }}>
+              XTMATOR
+            </h1>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>BOQ Estimation System</p>
           </div>
           <div className="sidebar-nav">
             <button id="nav-dashboard" className={'nav-item' + (page==='dashboard'?' active':'')} onClick={() => onNav('dashboard')}>
@@ -1087,6 +1089,9 @@ const spaHTML = `<!DOCTYPE html>
       return (
         <div style={{ maxWidth: 1000, margin: '40px auto', padding: 20 }}>
           <div className="card" style={{ padding: 24, marginBottom: 20, textAlign: 'center' }}>
+            <h1 style={{ fontFamily: "'Monoton', cursive", background: 'linear-gradient(45deg, #00C2FF, #8E2DE2, #FF007F)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontSize: 36, margin: '0 0 16px 0', fontWeight: 'normal' }}>
+              XTMATOR
+            </h1>
             <h2 style={{ margin:0, marginBottom:8 }}>{sheet.project.Name}</h2>
             <p style={{ margin:0, color:'var(--text-muted)' }}>
               {sheet.project.ClientName && <span>👤 Client: {sheet.project.ClientName} &bull; </span>}
