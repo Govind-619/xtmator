@@ -29,3 +29,34 @@ go run ./cmd/xtmator/main.go
 ```
 3. The server natively injects itself over `localhost` at port `3333` and executes your Default OS Browser! 
 4. Import your Excel DSR schedules into the embedded storage and begin estimating seamlessly!
+
+## 🚀 Sharing & Deployment
+
+XTMATOR is designed for extreme portability. You can share it with friends or clients who have zero IT knowledge using one of two methods:
+
+### Method 1: The Single-File Binary (Easiest)
+Since XTMATOR is written in Go, it compiles into a single executable file that includes everything (including the DSR catalog).
+
+1. **Build for Windows:**
+   - If you have Go installed on Windows:
+     ```bash
+     CGO_ENABLED=1 go build -o xtmator.exe ./cmd/xtmator/main.go
+     ```
+   - If you are on Linux and want to build for Windows:
+     ```bash
+     CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 CGO_ENABLED=1 go build -o xtmator.exe ./cmd/xtmator/main.go
+     ```
+2. **Share:** Send the `xtmator.exe` to your friend.
+3. **Run:** They just need to double-click it. It will automatically create `xtmator.db` and populate it with the 3,374 DSR items on its own.
+4. **Access:** Open `http://localhost:3333` in any browser.
+
+### Method 2: Docker (Best for Reliability)
+If they have Docker installed, they can run the entire environment with one command:
+
+```bash
+docker-compose up -d
+```
+The app will be available at `http://localhost:3333`. All data is persisted in a Docker volume.
+
+## 📜 License
+MIT License. Created for the construction industry.

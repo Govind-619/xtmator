@@ -1,0 +1,11 @@
+services:
+  xtmator:
+    build: .
+    ports:
+      - "3333:3333"
+    volumes:
+      - xtmator_data:/app
+    restart: always
+
+volumes:
+  xtmator_data:

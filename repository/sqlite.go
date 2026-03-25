@@ -3,6 +3,7 @@ package repository
 import (
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,6 +12,9 @@ import (
 
 //go:embed migrations/schema.sql
 var schemaFS embed.FS
+
+//go:embed migrations/dsr_seed.json
+var dsrSeedData []byte
 
 // NewSQLiteDB opens (or creates) the SQLite database, applies schema, and runs
 // safe ALTER TABLE migrations for columns added after initial schema.
@@ -55,7 +59,54 @@ func NewSQLiteDB(dbPath string) (*sql.DB, error) {
 		db.Exec(m) // intentionally ignore error (column may already exist)
 	}
 
+	// Internal Seeding: If dsr_items is empty, populate from embedded JSON
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM dsr_items").Scan(&count)
+	if err == nil && count == 0 {
+		fmt.Println("🌱 Seeding DSR items from embedded catalog...")
+		if err := seedDSR(db); err != nil {
+			fmt.Printf("⚠️  Warning: Failed to seed DSR items: %v\n", err)
+		} else {
+			fmt.Println("✅ DSR seeding complete.")
+		}
+	}
+
 	return db, nil
+}
+
+type dsrSeedItem struct {
+	Code        string  `json:"code"`
+	Category    string  `json:"category"`
+	Description string  `json:"description"`
+	Unit        string  `json:"unit"`
+	Rate        float64 `json:"rate"`
+}
+
+func seedDSR(db *sql.DB) error {
+	var items []dsrSeedItem
+	if err := json.Unmarshal(dsrSeedData, &items); err != nil {
+		return fmt.Errorf("unmarshal dsr seed: %w", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO dsr_items (code, category, description, unit, rate) VALUES (?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, it := range items {
+		if _, err := stmt.Exec(it.Code, it.Category, it.Description, it.Unit, it.Rate); err != nil {
+			return fmt.Errorf("insert dsr item %s: %w", it.Code, err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 func splitSQL(s string) []string {
